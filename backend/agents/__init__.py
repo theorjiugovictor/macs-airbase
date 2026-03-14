@@ -77,10 +77,10 @@ PREVENTION PROTOCOL — be PROACTIVE, not just reactive:
    - Multiple maintenance flags on same aircraft? Recommend grounding BEFORE failure
    - Radar tracks approaching? Recommend posture change BEFORE threat escalates
    - Arming queue growing? Pre-stage ordnance BEFORE bottleneck blocks sorties
-2. PREDICTIVE ALERTS — when you see early indicators, post a WARNING-level event describing:
+2. PREDICTIVE ALERTS — when you see early indicators, post an event (use severity MEDIUM or HIGH depending on urgency) describing:
    - What trend you detected and which events show the pattern
    - What will happen if no action is taken (projected impact)
-   - What preventive action you recommend NOW to avoid the crisis
+   - What preventive action you are taking NOW to avoid the crisis
 3. CASCADING IMPACT — think about how YOUR domain affects OTHER domains:
    - FUEL low → OPS can't launch → ARMING loads wasted → readiness drops
    - MAINT backlog → aircraft unavailable → OPS plans broken → FUEL wasted on grounded jets
