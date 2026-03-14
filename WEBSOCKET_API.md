@@ -1,4 +1,4 @@
-# SABRE WebSocket API — Lovable Frontend Integration Guide
+# MACS Airbase WebSocket API — Lovable Frontend Integration Guide
 
 > **Live endpoint:** `wss://macs-airbase.duckdns.org/ws`
 > **Local dev:** `ws://localhost:8765`
@@ -22,10 +22,10 @@
 
 ## 1. Connection
 
-SABRE uses a **plain WebSocket** — no socket.io, no special handshake. Connect and start receiving.
+MACS Airbase uses a **plain WebSocket** — no socket.io, no special handshake. Connect and start receiving.
 
 ```
-wss://sabre.duckdns.org/ws
+wss://macs-airbase.duckdns.org/ws
 ```
 
 ### Connection Flow
@@ -460,7 +460,7 @@ function Dashboard() {
 
   return (
     <div>
-      <h1>SABRE — {scenario}</h1>
+      <h1>MACS Airbase — {scenario}</h1>
       <p>Connected: {connected ? '✅' : '❌'}</p>
       <p>Threat: {threatLevel}</p>
       <p>Events: {events.length}</p>
@@ -479,23 +479,23 @@ Copy these into your Lovable project:
 ```typescript
 // ── Event ───────────────────────────────────────────────────────────────
 
-interface SabreEvent {
+interface MacsEvent {
   id: string                 // "EVT-00001"
   timestamp: number          // Unix epoch seconds (float)
   source: string             // "OPS" | "FUEL" | "ARMING" | "MAINT" | "THREAT" | "SYSTEM"
   event_type: string         // See §4
-  domain: SabreDomain
-  severity: SabreSeverity
+  domain: MacsDomain
+  severity: MacsSeverity
   source_layer: SourceLayer
   source_mode: SourceMode
   payload: Record<string, any> & { message?: string }
   tags: string[]
 }
 
-type SabreDomain =
+type MacsDomain =
   | 'SORTIE' | 'FUEL' | 'ARMING' | 'MAINTENANCE' | 'THREAT' | 'SYSTEM'
 
-type SabreSeverity =
+type MacsSeverity =
   | 'CRITICAL' | 'HIGH' | 'AMBER' | 'MEDIUM' | 'LOW' | 'INFO'
 
 type SourceLayer =
@@ -554,8 +554,8 @@ interface WorldState {
 // ── WebSocket Messages ──────────────────────────────────────────────────
 
 type WSMessage =
-  | { type: 'history'; events: SabreEvent[] }
-  | SabreEvent  // live event (no wrapper)
+  | { type: 'history'; events: MacsEvent[] }
+  | MacsEvent  // live event (no wrapper)
 ```
 
 ---
@@ -565,7 +565,7 @@ type WSMessage =
 Recommended color palette for UI consistency:
 
 ```typescript
-const DOMAIN_COLOR: Record<SabreDomain, string> = {
+const DOMAIN_COLOR: Record<MacsDomain, string> = {
   SORTIE:      '#3b82f6',  // blue
   FUEL:        '#f97316',  // orange
   ARMING:      '#ef4444',  // red
@@ -574,7 +574,7 @@ const DOMAIN_COLOR: Record<SabreDomain, string> = {
   SYSTEM:      '#64748b',  // slate
 }
 
-const SEVERITY_COLOR: Record<SabreSeverity, string> = {
+const SEVERITY_COLOR: Record<MacsSeverity, string> = {
   CRITICAL: '#ef4444',  // red
   HIGH:     '#f59e0b',  // amber
   AMBER:    '#f59e0b',  // amber
@@ -589,7 +589,7 @@ const THREAT_COLOR: Record<string, string> = {
   RED:   '#ef4444',
 }
 
-const DOMAIN_ICON: Record<SabreDomain, string> = {
+const DOMAIN_ICON: Record<MacsDomain, string> = {
   SORTIE:      '✈',
   FUEL:        '⛽',
   ARMING:      '🎯',

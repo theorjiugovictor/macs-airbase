@@ -1,12 +1,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SABRE — Production Docker Compose (GCE + Caddy + Duck DNS)
+# MACS Airbase — Production Docker Compose (GCE + Caddy + Duck DNS)
 #
 # Exposes:
 #   - HTTPS on :443 via Caddy (auto-TLS with Let's Encrypt)
 #   - WSS at wss://<DOMAIN>/ws
 #
 # Required env vars (set in .env or export before running):
-#   DOMAIN=sabre.duckdns.org
+#   DOMAIN=macs-airbase.duckdns.org
 #   DUCKDNS_TOKEN=your-duckdns-token
 #   GOOGLE_API_KEY=your-gemini-key       (optional, mock mode if absent)
 #   SCENARIO=surge                        (optional, default: surge)
@@ -34,7 +34,7 @@ services:
     depends_on:
       - backend
     networks:
-      - sabre
+      - macs
 
   # ── Backend — Python multi-agent swarm + WebSocket ────────────────────────
   backend:
@@ -52,7 +52,7 @@ services:
       - SCENARIO=${SCENARIO:-surge}
     command: python main.py --scenario ${SCENARIO:-surge}
     networks:
-      - sabre
+      - macs
 
   # ── Duck DNS updater — runs once then cron every 5 min ──────────────────
   duckdns:
@@ -72,12 +72,12 @@ services:
       done
       "
     networks:
-      - sabre
+      - macs
 
 volumes:
   caddy_data:
   caddy_config:
 
 networks:
-  sabre:
+  macs:
     driver: bridge

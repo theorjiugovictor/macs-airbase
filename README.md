@@ -1,4 +1,4 @@
-# SABRE — Smart Air Base Response Engine
+# MACS Airbase — Multi-Agent Command System for Smart Air Bases
 
 Multi-agent swarm system for Swedish Air Force road base operations.
 Built for the **Saab Smart Air Base Hackathon** (Hack Day: March 14, Stockholm · Finals: March 26, Linköping).
@@ -6,7 +6,7 @@ Built for the **Saab Smart Air Base Hackathon** (Hack Day: March 14, Stockholm �
 ## Architecture
 
 ```
-SABRE uses stigmergy: agents coordinate exclusively through a shared append-only
+MACS Airbase uses stigmergy: agents coordinate exclusively through a shared append-only
 bulletin board event log. No direct agent-to-agent communication.
 
 Each SAU (Smart Air-base Unit) runs a PERCEIVE → REASON → ACT loop every ~5s.

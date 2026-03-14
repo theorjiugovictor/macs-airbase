@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# SABRE — Google Compute Engine deployment script
+# MACS Airbase — Google Compute Engine deployment script
 #
 # This script:
 #   1. Creates a GCE VM (e2-small, Debian 12)
@@ -23,8 +23,8 @@ set -euo pipefail
 # ── Configuration ─────────────────────────────────────────────────────────
 PROJECT=$(gcloud config get-value project 2>/dev/null)
 ZONE="${GCE_ZONE:-europe-north1-a}"              # Stockholm region
-MACHINE_TYPE="${GCE_MACHINE:-e2-small}"           # 2 vCPU, 2 GB — plenty for SABRE
-INSTANCE_NAME="${GCE_INSTANCE:-sabre-vm}"
+MACHINE_TYPE="${GCE_MACHINE:-e2-small}"           # 2 vCPU, 2 GB — plenty for MACS
+INSTANCE_NAME="${GCE_INSTANCE:-macs-vm}"
 DUCKDNS_SUBDOMAIN="${DUCKDNS_SUBDOMAIN:-macs-airbase}"
 DOMAIN="${DUCKDNS_SUBDOMAIN}.duckdns.org"
 REPO_URL="${REPO_URL:-https://github.com/theorjiugovictor/macs-airbase.git}"
@@ -34,7 +34,7 @@ SCENARIO="${SCENARIO:-surge}"
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
-echo "  SABRE — GCE Deployment"
+echo "  MACS Airbase — GCE Deployment"
 echo "═══════════════════════════════════════════════════════════"
 echo "  Project  : $PROJECT"
 echo "  Zone     : $ZONE"
@@ -66,7 +66,7 @@ gcloud compute instances create "$INSTANCE_NAME" \
     --tags=http-server,https-server \
     --metadata=startup-script='#!/bin/bash
         # Log everything
-        exec > /var/log/sabre-setup.log 2>&1
+        exec > /var/log/macs-setup.log 2>&1
         set -ex
 
         # Install Docker
@@ -100,8 +100,8 @@ echo "→ Updating Duck DNS: $DOMAIN → $EXTERNAL_IP"
 DUCK_RESP=$(curl -s "https://www.duckdns.org/update?domains=${DUCKDNS_SUBDOMAIN}&token=${DUCKDNS_TOKEN}&ip=${EXTERNAL_IP}")
 echo "  Duck DNS response: $DUCK_RESP"
 
-# ── 5. Deploy SABRE on the VM ───────────────────────────────────────────
-echo "→ Deploying SABRE on the VM..."
+# ── 5. Deploy MACS Airbase on the VM ───────────────────────────────────────
+echo "→ Deploying MACS Airbase on the VM..."
 gcloud compute ssh "$INSTANCE_NAME" --zone="$ZONE" --command="
     set -ex
 
@@ -114,11 +114,11 @@ gcloud compute ssh "$INSTANCE_NAME" --zone="$ZONE" --command="
 
     # Clone repo
     cd /opt
-    sudo git clone ${REPO_URL} sabre || (cd /opt/sabre && sudo git pull)
-    cd /opt/sabre
+    sudo git clone ${REPO_URL} macs-airbase || (cd /opt/macs-airbase && sudo git pull)
+    cd /opt/macs-airbase
 
     # Write .env
-    sudo tee /opt/sabre/deploy/.env > /dev/null <<ENVFILE
+    sudo tee /opt/macs-airbase/deploy/.env > /dev/null <<ENVFILE
 DOMAIN=${DOMAIN}
 DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
 DUCKDNS_SUBDOMAIN=${DUCKDNS_SUBDOMAIN}
@@ -130,15 +130,15 @@ SCENARIO=${SCENARIO}
 ENVFILE
 
     # Start the stack
-    cd /opt/sabre/deploy
+    cd /opt/macs-airbase/deploy
     sudo docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 
-    echo 'SABRE deployed!'
+    echo 'MACS Airbase deployed!'
 "
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
-echo "  ✅ SABRE DEPLOYED"
+echo "  ✅ MACS AIRBASE DEPLOYED"
 echo "═══════════════════════════════════════════════════════════"
 echo "  WebSocket : wss://${DOMAIN}/ws"
 echo "  Health    : https://${DOMAIN}/health"

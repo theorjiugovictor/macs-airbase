@@ -316,7 +316,7 @@ SCENARIOS = {
                 payload={
                     "message": "Primary comms relay overrun. HF backup only. "
                                "Coordination between dispersal sites degraded. "
-                               "SABRE agents operating autonomously until relay re-established.",
+                               "MACS Airbase agents operating autonomously until relay re-established.",
                     "primary_comms": "lost",
                     "backup": "HF-radio",
                     "coordination_status": "degraded",

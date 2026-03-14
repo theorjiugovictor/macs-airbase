@@ -58,7 +58,7 @@ function ConnectionBadge({ connected }) {
         background: connected ? '#4ade80' : '#f87171',
         boxShadow: connected ? '0 0 6px #4ade80' : 'none',
       }} />
-      {connected ? 'SABRE LIVE' : 'DISCONNECTED'}
+      {connected ? 'MACS LIVE' : 'DISCONNECTED'}
     </span>
   )
 }
@@ -280,7 +280,7 @@ export default function App() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.5px', color: '#e5e7eb' }}>
-            ✈ SABRE
+            ✈ MACS AIRBASE
           </span>
           {scenario && (
             <span style={{ color: '#f59e0b', fontSize: 11 }}>
@@ -385,8 +385,8 @@ export default function App() {
                 padding: 40, fontSize: 13,
               }}>
                 {connected
-                  ? '✈ Waiting for SABRE activity...'
-                  : '✈ Connecting to SABRE...'}
+                  ? '✈ Waiting for MACS Airbase activity...'
+                  : '✈ Connecting to MACS Airbase...'}
               </div>
             ) : (
               events.map(event => <EventRow key={event.id} event={event} />)

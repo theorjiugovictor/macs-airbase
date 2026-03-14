@@ -3,10 +3,10 @@
 # Duck DNS updater — keeps your subdomain pointing at this VM's public IP.
 #
 # Usage:
-#   DUCKDNS_TOKEN=your-token DUCKDNS_SUBDOMAIN=sabre ./duckdns-update.sh
+#   DUCKDNS_TOKEN=your-token DUCKDNS_SUBDOMAIN=macs-airbase ./duckdns-update.sh
 #
 # Or install as a cron job (every 5 minutes):
-#   */5 * * * * DUCKDNS_TOKEN=xxx DUCKDNS_SUBDOMAIN=sabre /opt/sabre/deploy/duckdns-update.sh >> /var/log/duckdns.log 2>&1
+#   */5 * * * * DUCKDNS_TOKEN=xxx DUCKDNS_SUBDOMAIN=macs-airbase /opt/macs-airbase/deploy/duckdns-update.sh >> /var/log/duckdns.log 2>&1
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail

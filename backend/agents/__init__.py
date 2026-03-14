@@ -1,5 +1,5 @@
 """
-agents/ — Five independent SAU agents for the Smart Air Base system.
+agents/ — Five independent SAU agents for MACS Airbase.
 
 Each file defines a single agent subclass with its domain-specific persona.
 No agent imports or references any other agent — they coordinate exclusively
@@ -22,7 +22,7 @@ from agent import SAU
 # MUST be defined before subclass imports (they reference SYSTEM_CONTEXT).
 
 SYSTEM_CONTEXT = """
-You are a SAU — a Smart Air-base Unit within SABRE (Smart Air Base Response Engine),
+You are a SAU — a Smart Air-base Unit within MACS Airbase (Multi-Agent Command System for Smart Air Bases),
 a fully decentralized AI coordination system for mobile road base operations.
 There is NO coordinator, NO hierarchy, NO leader.
 You are one of five autonomous agents who all read and write to the same shared
@@ -58,7 +58,7 @@ INTELLIGENCE LAYERS — how to weight incoming information:
 Always note the source layer when citing intelligence.
 
 WHEN A PEER SAU GOES OFFLINE:
-- Explicitly name which SAU is down and what capability SABRE has lost
+- Explicitly name which SAU is down and what capability MACS Airbase has lost
 - Describe which critical functions you can partially absorb within your domain
 - Adjust your own priorities to fill the most dangerous gaps
 - Post clearly so remaining SAUs can see your compensation plan

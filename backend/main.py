@@ -1,5 +1,5 @@
 """
-SABRE — Smart Air Base Response Engine — Entry point
+MACS Airbase — Multi-Agent Command System for Smart Air Bases — Entry point
 
 Usage:
     python main.py                          # mock mode, surge scenario
@@ -108,7 +108,7 @@ def print_event(event):
 
 def run_cli(agents: dict, runner: ScenarioRunner, world_state_mgr=None):
     """Simple CLI for live demo control."""
-    print("\n\033[1mSABRE CLI — commands: kill <SAU> | revive <SAU> | state | world | quit\033[0m\n")
+    print("\n\033[1mMACS Airbase CLI — commands: kill <SAU> | revive <SAU> | state | world | quit\033[0m\n")
     while True:
         try:
             cmd = input("> ").strip().lower()
@@ -163,7 +163,7 @@ def run_cli(agents: dict, runner: ScenarioRunner, world_state_mgr=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SABRE — Smart Air Base Response Engine")
+    parser = argparse.ArgumentParser(description="MACS Airbase — Multi-Agent Command System for Smart Air Bases")
     parser.add_argument("--scenario", default="surge", help="Scenario key (surge, scramble, disperse)")
     parser.add_argument("--list-scenarios", action="store_true", help="List available scenarios")
     parser.add_argument("--live", action="store_true", help="Use real LLM agents (requires an API key)")
@@ -204,7 +204,7 @@ def main():
         mode_str = "Live (Claude)"
 
     print(f"\n{BOLD}{'='*60}")
-    print("  SABRE — Smart Air Base Response Engine")
+    print("  MACS Airbase — Multi-Agent Command System for Smart Air Bases")
     print(f"{'='*60}{RESET}")
     print(f"  Mode     : {mode_str}")
     print(f"  Scenario : {args.scenario}")
@@ -245,7 +245,7 @@ def main():
     runner = ScenarioRunner(args.scenario)
     runner.start()
 
-    print(f"\n{BOLD}SABRE active. Scenario '{args.scenario}' running.{RESET}\n")
+    print(f"\n{BOLD}MACS Airbase active. Scenario '{args.scenario}' running.{RESET}\n")
 
     try:
         if sys.stdin.isatty():
@@ -260,7 +260,7 @@ def main():
         runner.stop()
         for agent in swarm:
             agent.stop()
-        print(f"\n{BOLD}SABRE stopped.{RESET}")
+        print(f"\n{BOLD}MACS Airbase stopped.{RESET}")
         stats = bulletin.stats()
         print(f"Total events on bulletin: {stats['total_events']}")
 

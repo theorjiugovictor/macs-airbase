@@ -1,5 +1,5 @@
 """
-SABRE Integration Tests
+MACS Airbase Integration Tests
 
 Validates core mechanics:
   1. Bulletin board posting, reading, eviction

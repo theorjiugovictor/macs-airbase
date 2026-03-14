@@ -1,7 +1,7 @@
-# SABRE — Caddy reverse proxy with automatic HTTPS via Duck DNS
+# MACS Airbase — Caddy reverse proxy with automatic HTTPS via Duck DNS
 #
 # Caddy automatically provisions Let's Encrypt TLS certificates.
-# The {$DOMAIN} env var is set in docker-compose.prod.yml (e.g. sabre.duckdns.org)
+# The {$DOMAIN} env var is set in docker-compose.prod.yml (e.g. macs-airbase.duckdns.org)
 
 {$DOMAIN} {
     # WebSocket endpoint — proxied to the backend container
@@ -17,7 +17,7 @@
     # Everything else → show a simple info page (or proxy to a frontend)
     handle {
         header Content-Type "application/json"
-        respond `{"service":"SABRE","status":"online","ws":"/ws","docs":"https://github.com/princeorjiugo/macs-airbase"}` 200
+        respond `{"service":"MACS Airbase","status":"online","ws":"/ws","docs":"https://github.com/theorjiugovictor/macs-airbase"}` 200
     }
 
     # CORS headers for Lovable frontend (or any external frontend)

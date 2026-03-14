@@ -498,7 +498,7 @@ Respond ONLY with valid JSON. No markdown."""
                 ],
                 extra_headers={
                     "HTTP-Referer": "https://macs-airbase.duckdns.org",
-                    "X-Title": "SABRE Air Base",
+                    "X-Title": "MACS Airbase",
                 },
             )
             text = response.choices[0].message.content.strip()
