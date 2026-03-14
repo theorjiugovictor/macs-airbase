@@ -24,7 +24,7 @@ function getAudioCtx() {
 }
 
 /**
- * Play a short alert tone.
+ * Play a pronounced alert tone.
  * @param {'critical'|'high'|'info'} level — controls pitch & pattern
  */
 function playPing(level = 'high') {
@@ -35,29 +35,53 @@ function playPing(level = 'high') {
     const now = ctx.currentTime
 
     if (level === 'critical') {
-      // Double-beep: two short high-pitched tones
-      for (let i = 0; i < 2; i++) {
+      // CRITICAL: Urgent triple-beep klaxon — loud, attention-grabbing
+      const freqs = [880, 0, 880, 0, 1100]  // beep-pause-beep-pause-higher beep
+      const beepLen = 0.15
+      const gapLen = 0.08
+      let t = now
+      for (const freq of freqs) {
+        if (freq === 0) { t += gapLen; continue }
+        // Main tone
         const osc = ctx.createOscillator()
         const gain = ctx.createGain()
-        osc.type = 'sine'
-        osc.frequency.value = 880     // A5
-        gain.gain.setValueAtTime(0.25, now + i * 0.18)
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.18 + 0.12)
+        osc.type = 'square'  // harsher, more urgent than sine
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.45, t)
+        gain.gain.setValueAtTime(0.45, t + beepLen * 0.7)
+        gain.gain.exponentialRampToValueAtTime(0.001, t + beepLen)
         osc.connect(gain).connect(ctx.destination)
-        osc.start(now + i * 0.18)
-        osc.stop(now + i * 0.18 + 0.15)
+        osc.start(t)
+        osc.stop(t + beepLen + 0.02)
+        // Harmonic layer for richness
+        const osc2 = ctx.createOscillator()
+        const gain2 = ctx.createGain()
+        osc2.type = 'sine'
+        osc2.frequency.value = freq * 1.5  // fifth harmonic
+        gain2.gain.setValueAtTime(0.15, t)
+        gain2.gain.exponentialRampToValueAtTime(0.001, t + beepLen)
+        osc2.connect(gain2).connect(ctx.destination)
+        osc2.start(t)
+        osc2.stop(t + beepLen + 0.02)
+        t += beepLen + gapLen
       }
     } else {
-      // Single short ping
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.value = 660     // E5
-      gain.gain.setValueAtTime(0.2, now)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15)
-      osc.connect(gain).connect(ctx.destination)
-      osc.start(now)
-      osc.stop(now + 0.2)
+      // HIGH: Two-tone alert chime — clear, distinct
+      const tones = [660, 880]  // ascending two-note chime
+      let t = now
+      for (const freq of tones) {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'triangle'  // warm but audible
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.4, t)
+        gain.gain.setValueAtTime(0.35, t + 0.12)
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25)
+        osc.connect(gain).connect(ctx.destination)
+        osc.start(t)
+        osc.stop(t + 0.28)
+        t += 0.2
+      }
     }
   } catch {
     // Audio not available — silently ignore

@@ -14,6 +14,15 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useField } from './useField'
 import { useAlerts } from './useAlerts'
+
+// Stable auth info — avoids re-creating object every render
+function useStableAuth(role, callsign) {
+  const ref = useRef({ role, callsign })
+  if (ref.current.role !== role || ref.current.callsign !== callsign) {
+    ref.current = { role, callsign }
+  }
+  return ref.current
+}
 import {
   Plane, PlaneLanding, Droplets, Crosshair, Wrench, Radar, Globe,
   Truck, Shield, Radio, Eye, Zap, CheckCircle2, AlertTriangle,
@@ -365,7 +374,8 @@ export default function App() {
 
 
 function FieldDashboard({ role, callsign, onBack }) {
-  const { events, connected, sendReport, lastReportId } = useField({ role, callsign })
+  const authInfo = useStableAuth(role, callsign)
+  const { events, connected, sendReport, lastReportId } = useField(authInfo)
   const { notify, permissionState } = useAlerts()
   const [activeSheet, setActiveSheet] = useState(null)     // quick report sheet
   const [feedMode, setFeedMode] = useState('smart')        // 'smart' | 'all'
