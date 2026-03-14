@@ -7,7 +7,15 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8765'
+function _wsUrl() {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL
+  if (typeof window !== 'undefined' && !window.location.host.startsWith('localhost')) {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${proto}//${window.location.host}/ws`
+  }
+  return 'ws://localhost:8765'
+}
+const WS_URL = _wsUrl()
 const MAX_EVENTS = 100
 const RECONNECT_MS = 3000
 

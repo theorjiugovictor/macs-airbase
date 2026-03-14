@@ -4,8 +4,8 @@
 #   /ws          → WebSocket backend (bidirectional)
 #   /field/*     → Field PWA (mobile app for ground crews)
 #   /health      → Health check
-#   /api/token   → Token generation endpoint (dev only)
-#   /*           → Command dashboard (default)
+#   /api/*       → API endpoints
+#   /            → Redirect to /field/
 
 {$DOMAIN} {
     # ── WebSocket — proxied to backend ──────────────────────────────────
@@ -21,7 +21,7 @@
     # ── API info ────────────────────────────────────────────────────────
     handle /api/info {
         header Content-Type "application/json"
-        respond `{"service":"MACS Airbase","version":"2.0","ws":"/ws","dashboard":"/","field":"/field/","docs":"https://github.com/theorjiugovictor/macs-airbase"}` 200
+        respond `{"service":"MACS Airbase","version":"2.1","ws":"/ws","field":"/field/","docs":"https://github.com/theorjiugovictor/macs-airbase"}` 200
     }
 
     # ── Field PWA — mobile app ──────────────────────────────────────────
@@ -32,11 +32,9 @@
         try_files {path} /index.html
     }
 
-    # ── Command Dashboard — default ─────────────────────────────────────
-    handle {
-        root * /srv/dashboard
-        file_server
-        try_files {path} /index.html
+    # ── Root redirect → field app ───────────────────────────────────────
+    handle / {
+        redir /field/ permanent
     }
 
     # ── CORS headers ────────────────────────────────────────────────────

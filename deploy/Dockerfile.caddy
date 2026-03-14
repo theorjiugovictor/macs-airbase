@@ -1,12 +1,4 @@
-# Stage 1: Build command dashboard
-FROM node:20-alpine AS dashboard-build
-WORKDIR /app
-COPY frontend/package*.json ./
-RUN npm ci
-COPY frontend/ .
-RUN npm run build
-
-# Stage 2: Build field app
+# Stage 1: Build field app
 FROM node:20-alpine AS field-build
 WORKDIR /app
 COPY field/package*.json ./
@@ -14,8 +6,7 @@ RUN npm ci
 COPY field/ .
 RUN npm run build
 
-# Stage 3: Caddy serves both + proxies WebSocket
+# Stage 2: Caddy serves field app + proxies WebSocket
 FROM caddy:2-alpine
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-COPY --from=dashboard-build /app/dist /srv/dashboard
 COPY --from=field-build /app/dist /srv/field
