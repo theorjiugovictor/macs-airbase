@@ -9,6 +9,44 @@ const SERVER_LOCATION = (import.meta.env.VITE_ELEVENLABS_SERVER_LOCATION || 'glo
 const TOKEN_ENDPOINT = (import.meta.env.VITE_ELEVENLABS_TOKEN_ENDPOINT || '').trim()
 const SIGNED_URL_ENDPOINT = (import.meta.env.VITE_ELEVENLABS_SIGNED_URL_ENDPOINT || '').trim()
 
+function normalizeVoiceText(value) {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(item => normalizeVoiceText(item))
+      .filter(Boolean)
+      .join(' ')
+  }
+
+  if (value && typeof value === 'object') {
+    const candidates = [
+      value.text,
+      value.message,
+      value.transcript,
+      value.user_transcript,
+      value.agent_response,
+      value.corrected_agent_response,
+      value.content,
+    ]
+
+    for (const candidate of candidates) {
+      const normalized = normalizeVoiceText(candidate)
+      if (normalized) return normalized
+    }
+
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return ''
+    }
+  }
+
+  return ''
+}
+
 function upsertMessage(prev, next) {
   const index = prev.findIndex(message => message.id === next.id)
   if (index === -1) {
@@ -70,7 +108,28 @@ async function resolveSessionConfig() {
   return { agentId: AGENT_ID }
 }
 
-export function useVoiceAgent() {
+function buildFieldAddress(roleLabel, callsign) {
+  if (callsign) return callsign
+  if (roleLabel) return roleLabel
+  return 'field unit'
+}
+
+function buildFirstMessage(roleLabel, callsign) {
+  const address = buildFieldAddress(roleLabel, callsign)
+  return `${address}, MACS Voice online. State your report.`
+}
+
+function buildRoleContext(roleLabel, callsign) {
+  const address = buildFieldAddress(roleLabel, callsign)
+  return [
+    `Current field user role: ${roleLabel || 'field unit'}.`,
+    `Current field callsign: ${callsign || 'unknown'}.`,
+    `Address this user as ${address}.`,
+    'Do not call this user Commander or Befalhavare unless they explicitly request that title.',
+  ].join(' ')
+}
+
+export function useVoiceAgent({ role, roleLabel, callsign } = {}) {
   const [messages, setMessages] = useState([])
   const [tentativeReply, setTentativeReply] = useState('')
   const [error, setError] = useState('')
@@ -105,36 +164,87 @@ export function useVoiceAgent() {
     },
     onMessage: (message) => {
       if (message.type === 'user_transcript') {
+        const transcript = normalizeVoiceText(
+          message.user_transcription_event.user_transcript
+        )
+        if (!transcript) return
+
         setMessages(prev => upsertMessage(prev, {
           id: `user-${message.user_transcription_event.event_id}`,
-          role: 'commander',
-          text: message.user_transcription_event.user_transcript,
+          role: role || 'field',
+          text: transcript,
+        }))
+        return
+      }
+
+      if (message.type === 'tentative_user_transcript') {
+        const transcript = normalizeVoiceText(
+          message.tentative_user_transcription_event.user_transcript
+        )
+        if (!transcript) return
+
+        setMessages(prev => upsertMessage(prev, {
+          id: `user-${message.tentative_user_transcription_event.event_id}`,
+          role: role || 'field',
+          text: transcript,
         }))
         return
       }
 
       if (message.type === 'agent_response') {
+        const response = normalizeVoiceText(
+          message.agent_response_event.agent_response
+        )
+        if (!response) return
+
         setTentativeReply('')
         setMessages(prev => upsertMessage(prev, {
           id: `agent-${message.agent_response_event.event_id}`,
           role: 'baseops',
-          text: message.agent_response_event.agent_response,
+          text: response,
         }))
         return
       }
 
+      if (message.type === 'agent_chat_response_part') {
+        const part = normalizeVoiceText(message.text_response_part.text)
+        if (!part) return
+
+        setMessages(prev => {
+          const id = `agent-${message.text_response_part.event_id}`
+          const existing = prev.find((entry) => entry.id === id)
+          const nextText = message.text_response_part.type === 'delta' && existing
+            ? `${existing.text}${part}`
+            : part
+
+          return upsertMessage(prev, {
+            id,
+            role: 'baseops',
+            text: nextText,
+          })
+        })
+        return
+      }
+
       if (message.type === 'agent_response_correction') {
+        const corrected = normalizeVoiceText(
+          message.agent_response_correction_event.corrected_agent_response
+        )
+        if (!corrected) return
+
         setMessages(prev => upsertMessage(prev, {
           id: `agent-${message.agent_response_correction_event.event_id}`,
           role: 'baseops',
-          text: message.agent_response_correction_event.corrected_agent_response,
+          text: corrected,
         }))
         return
       }
 
       if (message.type === 'internal_tentative_agent_response') {
         setTentativeReply(
-          message.tentative_agent_response_internal_event.tentative_agent_response || ''
+          normalizeVoiceText(
+            message.tentative_agent_response_internal_event.tentative_agent_response
+          ) || ''
         )
       }
     },
@@ -153,10 +263,20 @@ export function useVoiceAgent() {
       setPermissionState('requesting')
 
       const sessionConfig = await resolveSessionConfig()
+      const sessionOverrides = sessionConfig.overrides || {}
       await conversation.startSession({
-        connectionType: CONNECTION_TYPE,
         ...sessionConfig,
+        connectionType: CONNECTION_TYPE,
+        userId: callsign || role || 'field-user',
+        overrides: {
+          ...sessionOverrides,
+          agent: {
+            ...(sessionOverrides.agent || {}),
+            firstMessage: buildFirstMessage(roleLabel, callsign),
+          },
+        },
       })
+      conversation.sendContextualUpdate(buildRoleContext(roleLabel, callsign))
       setPermissionState('granted')
       setMicMuted(true)
     } catch (nextError) {
