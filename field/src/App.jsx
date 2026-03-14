@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useField } from './useField'
+import { useAlerts } from './useAlerts'
 import {
   PaperAirplaneIcon,
   BeakerIcon,
@@ -424,7 +425,9 @@ function FieldDashboard({ role, callsign, onBack }) {
   const [activeSheet, setActiveSheet] = useState(null)
   const [feedMode, setFeedMode] = useState('smart')
   const [reportFeedback, setReportFeedback] = useState(null)
+  const [muted, setMuted] = useState(false)
   const feedRef = useRef(null)
+  const prevCountRef = useRef(0)
 
   const { listening, transcript, supported: sttSupported, start: sttStart, stop: sttStop, reset: sttReset } = useSpeechToText()
   const [pttDomain, setPttDomain] = useState('')

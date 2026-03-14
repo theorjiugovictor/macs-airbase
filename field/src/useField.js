@@ -5,7 +5,7 @@
  * receives role-filtered events, and sends field reports.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 function _wsUrl() {
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
@@ -32,11 +32,33 @@ export function useField(authInfo) {
   const wsRef = useRef(null);
   const reconnectRef = useRef(null);
 
+  const pendingRef = useRef([]);
+  const flushTimerRef = useRef(null);
+
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
+
+    // Batch live events — flush to state at most every 300ms to avoid render thrashing
+    const flushPending = () => {
+      flushTimerRef.current = null;
+      if (pendingRef.current.length === 0) return;
+      const batch = pendingRef.current;
+      pendingRef.current = [];
+      setEvents((prev) => {
+        const next = [...prev, ...batch];
+        return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next;
+      });
+    };
+
+    const queueEvent = (evt) => {
+      pendingRef.current.push(evt);
+      if (!flushTimerRef.current) {
+        flushTimerRef.current = setTimeout(flushPending, 300);
+      }
+    };
 
     ws.onopen = () => {
       setConnected(true);
@@ -88,12 +110,9 @@ export function useField(authInfo) {
           return;
         }
 
-        // Live event
+        // Live event — batched for performance
         if (data.id) {
-          setEvents((prev) => {
-            const next = [...prev, data];
-            return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next;
-          });
+          queueEvent(data);
         }
       } catch (e) {
         console.error("Parse error:", e);
@@ -112,6 +131,7 @@ export function useField(authInfo) {
     connect();
     return () => {
       clearTimeout(reconnectRef.current);
+      clearTimeout(flushTimerRef.current);
       wsRef.current?.close();
     };
   }, [connect]);
@@ -128,21 +148,25 @@ export function useField(authInfo) {
     }
   }, []);
 
-  // Filter: only show events relevant to field (actions directed to us, field reports, critical alerts)
-  const fieldEvents = events.filter((e) => {
-    // Always show critical/high
-    if (e.severity === "CRITICAL" || e.severity === "HIGH") return true;
-    // Show field reports
-    if (e.event_type === "FIELD_REPORT") return true;
-    // Show actions (agent outputs)
-    if (e.event_type === "ACTION_TAKEN") return true;
-    // Show sensor alerts
-    if (e.source_layer === "SENSOR" && e.severity !== "INFO") return true;
-    // Show scenario events
-    if (e.source === "SYSTEM" && e.event_type !== "WORLD_STATE_UPDATE")
-      return true;
-    return false;
-  });
+  // Filter: only show events relevant to field — memoized to avoid re-render cascades
+  const fieldEvents = useMemo(
+    () =>
+      events.filter((e) => {
+        // Always show critical/high
+        if (e.severity === "CRITICAL" || e.severity === "HIGH") return true;
+        // Show field reports
+        if (e.event_type === "FIELD_REPORT") return true;
+        // Show actions (agent outputs)
+        if (e.event_type === "ACTION_TAKEN") return true;
+        // Show sensor alerts
+        if (e.source_layer === "SENSOR" && e.severity !== "INFO") return true;
+        // Show scenario events
+        if (e.source === "SYSTEM" && e.event_type !== "WORLD_STATE_UPDATE")
+          return true;
+        return false;
+      }),
+    [events],
+  );
 
   return {
     events: fieldEvents,
