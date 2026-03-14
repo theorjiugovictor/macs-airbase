@@ -429,7 +429,7 @@ export default function App() {
 
 function FieldDashboard({ role, callsign, onBack }) {
   const authInfo = useStableAuth(role, callsign)
-  const { events, connected, sendReport, lastReportId } = useField(authInfo)
+  const { events, connected, sendReport, sendVoiceEvent, lastReportId } = useField(authInfo)
   const { notify } = useAlerts()
   const [activeSheet, setActiveSheet] = useState(null)
   const [feedMode, setFeedMode] = useState('smart')
@@ -437,6 +437,8 @@ function FieldDashboard({ role, callsign, onBack }) {
   const [muted, setMuted] = useState(false)
   const feedRef = useRef(null)
   const prevCountRef = useRef(0)
+  const postedVoiceRef = useRef(new Map())
+  const roleInfo = ROLES.find(r => r.id === role)
 
   const {
     configured: voiceConfigured,
@@ -449,10 +451,9 @@ function FieldDashboard({ role, callsign, onBack }) {
     micMuted,
     permissionState: voicePermissionState,
     start: voiceStart,
-    stop: voiceStop,
     pressToTalk,
     releaseToTalk,
-  } = useVoiceAgent()
+  } = useVoiceAgent({ role, roleLabel: roleInfo?.label, callsign })
   const voiceConnected = voiceStatus === 'connected'
   const recentVoiceMessages = voiceMessages.slice(-2)
 
@@ -476,6 +477,28 @@ function FieldDashboard({ role, callsign, onBack }) {
     }
   }, [lastReportId])
 
+  useEffect(() => {
+    voiceMessages.forEach((message) => {
+      const text = message?.text?.trim()
+      if (!text) return
+
+      const previous = postedVoiceRef.current.get(message.id)
+      if (previous === text) return
+
+      const sent = sendVoiceEvent({
+        speaker: message.role === 'baseops' ? 'baseops' : role,
+        message: text,
+        domain: guessVoiceDomain(text),
+        severity: guessSeverity(text),
+        tags: [message.role === 'baseops' ? 'baseops-voice' : `${role}-voice`],
+      })
+
+      if (sent) {
+        postedVoiceRef.current.set(message.id, text)
+      }
+    })
+  }, [sendVoiceEvent, voiceMessages])
+
   const quickReports = QUICK_REPORTS[role] || []
 
   const { forYou, digest, allFiltered } = useMemo(() => {
@@ -483,11 +506,14 @@ function FieldDashboard({ role, callsign, onBack }) {
     const critHigh = events.filter(e =>
       (e.severity === 'CRITICAL' || e.severity === 'HIGH') && !(e.directed_to || []).length
     ).slice(-5)
+    const recentVoice = events.filter(e =>
+      e.event_type === 'VOICE_COMMAND' || e.event_type === 'VOICE_SUMMARY'
+    ).slice(-4)
     const latestPerAgent = {}
     events.forEach(e => { if (e.event_type === 'ACTION_TAKEN') latestPerAgent[e.source] = e })
     const seen = new Set(); const digest = []
     const addUnique = (arr) => arr.forEach(e => { if (!seen.has(e.id)) { seen.add(e.id); digest.push(e) } })
-    addUnique(forYou); addUnique(critHigh); addUnique(Object.values(latestPerAgent))
+    addUnique(forYou); addUnique(critHigh); addUnique(recentVoice); addUnique(Object.values(latestPerAgent))
     digest.sort((a, b) => b.timestamp - a.timestamp)
     return { forYou, digest, allFiltered: events }
   }, [events])
@@ -500,7 +526,6 @@ function FieldDashboard({ role, callsign, onBack }) {
   }, [events])
 
   const threatColor = threatLevel === 'RED' ? C.red : threatLevel === 'AMBER' ? C.amber : '#4ade80'
-  const roleInfo = ROLES.find(r => r.id === role)
 
   const tabStyle = (active) => ({
     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
@@ -511,6 +536,24 @@ function FieldDashboard({ role, callsign, onBack }) {
     color: active ? C.textPrimary : C.textDim,
     borderBottom: active ? `2px solid ${C.accent}` : '2px solid transparent',
   })
+
+  const handleVoiceButtonClick = () => {
+    if (!voiceConnected) {
+      voiceStart()
+    }
+  }
+
+  const handleVoicePressStart = (event) => {
+    if (!voiceConnected) return
+    event?.preventDefault?.()
+    pressToTalk()
+  }
+
+  const handleVoicePressEnd = (event) => {
+    if (!voiceConnected) return
+    event?.preventDefault?.()
+    releaseToTalk()
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden', background: C.surfacePrimary }}>
@@ -627,44 +670,21 @@ function FieldDashboard({ role, callsign, onBack }) {
         background: C.surfaceCard, padding: '8px 10px',
         paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
       }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 8, marginBottom: 8,
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{
-              fontSize: 10,
-              color: C.textPrimary,
-              fontWeight: 700,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-            }}>
-              Baseops Voice
-            </span>
-            <span style={{ fontSize: 9, color: C.textDim }}>
-              {voiceConnected
-                ? (isSpeaking ? 'Agent speaking' : `Session live • ${voiceMode}`)
-                : 'Session offline'}
-            </span>
-          </div>
-          <button
-            onClick={voiceConnected ? voiceStop : voiceStart}
-            disabled={!voiceConfigured && !voiceConnected}
-            style={{
-              padding: '8px 10px',
-              background: voiceConnected ? `${C.red}15` : `${C.accent}15`,
-              border: `1px solid ${voiceConnected ? `${C.red}55` : `${C.accent}55`}`,
-              color: voiceConnected ? C.red : C.accent,
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              cursor: (!voiceConfigured && !voiceConnected) ? 'not-allowed' : 'pointer',
-              opacity: (!voiceConfigured && !voiceConnected) ? 0.6 : 1,
-            }}
-          >
-            {voiceConnected ? 'End Session' : 'Start Voice'}
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
+          <span style={{
+            fontSize: 10,
+            color: C.textPrimary,
+            fontWeight: 700,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+          }}>
+            MACS Voice
+          </span>
+          <span style={{ fontSize: 9, color: C.textDim }}>
+            {voiceConnected
+              ? (isSpeaking ? 'Agent speaking' : `Session live • ${voiceMode}`)
+              : 'Tap mic to connect'}
+          </span>
         </div>
 
         {(voicePermissionState === 'denied' || voiceError || recentVoiceMessages.length > 0 || tentativeReply) && (
@@ -740,35 +760,41 @@ function FieldDashboard({ role, callsign, onBack }) {
 
         {/* Voice PTT button */}
         <button
-          onMouseDown={pressToTalk}
-          onMouseUp={releaseToTalk}
-          onMouseLeave={releaseToTalk}
-          onTouchStart={(event) => {
-            event.preventDefault()
-            pressToTalk()
-          }}
-          onTouchEnd={(event) => {
-            event.preventDefault()
-            releaseToTalk()
-          }}
-          onTouchCancel={releaseToTalk}
-          disabled={!voiceConnected}
+          onClick={handleVoiceButtonClick}
+          onMouseDown={handleVoicePressStart}
+          onMouseUp={handleVoicePressEnd}
+          onMouseLeave={handleVoicePressEnd}
+          onTouchStart={handleVoicePressStart}
+          onTouchEnd={handleVoicePressEnd}
+          onTouchCancel={handleVoicePressEnd}
+          disabled={!voiceConfigured && !voiceConnected}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             width: '100%', padding: '14px',
-            border: `1px solid ${voiceConnected ? (micMuted ? `${C.accent}55` : `${C.red}55`) : 'rgba(255,255,255,0.1)'}`,
+            border: `1px solid ${
+              !voiceConfigured && !voiceConnected
+                ? 'rgba(255,255,255,0.1)'
+                : voiceConnected
+                  ? (micMuted ? `${C.accent}55` : `${C.red}55`)
+                  : `${C.accent}55`
+            }`,
             background: voiceConnected
               ? (micMuted ? C.surfacePrimary : `${C.red}12`)
-              : C.surfacePrimary,
-            color: voiceConnected ? C.textPrimary : C.textDim,
+              : (!voiceConfigured && !voiceConnected ? C.surfacePrimary : `${C.accent}12`),
+            color: voiceConnected ? C.textPrimary : (!voiceConfigured && !voiceConnected ? C.textDim : C.accent),
             fontSize: 11, fontWeight: 700,
             letterSpacing: '0.15em', textTransform: 'uppercase',
-            cursor: voiceConnected ? 'pointer' : 'not-allowed',
+            cursor: (!voiceConfigured && !voiceConnected) ? 'not-allowed' : 'pointer',
             userSelect: 'none', fontFamily: 'inherit',
+            opacity: (!voiceConfigured && !voiceConnected) ? 0.7 : 1,
           }}
         >
-          <MicrophoneIcon style={{ width: 16, height: 16, color: voiceConnected ? (micMuted ? C.accent : C.red) : C.textDim }} />
-          {!voiceConnected ? 'Start Voice Session First' : (micMuted ? 'Hold to Talk' : 'Release to Transmit')}
+          <MicrophoneIcon style={{
+            width: 16,
+            height: 16,
+            color: voiceConnected ? (micMuted ? C.accent : C.red) : (!voiceConfigured && !voiceConnected ? C.textDim : C.accent),
+          }} />
+          {!voiceConnected ? 'Start Voice' : (micMuted ? 'Hold to Talk' : 'Release to Transmit')}
         </button>
 
         {!voiceConfigured && !voiceConnected && (
@@ -840,6 +866,16 @@ function guessDomain(text, role) {
   if (t.match(/sortie|scramble|taxi|takeoff|landing|aircraft|pilot|ready/)) return 'SORTIE'
   const roleDefaults = { pad_crew: 'MAINTENANCE', convoy: 'FUEL', security: 'THREAT', pilot: 'SORTIE', hq: 'SORTIE' }
   return roleDefaults[role] || 'SYSTEM'
+}
+
+function guessVoiceDomain(text) {
+  const t = text.toLowerCase()
+  if (t.match(/fuel|truck|convoy|jp-8|tanker|spill|delivery/)) return 'FUEL'
+  if (t.match(/arm|weapon|ordnance|loadout|amraam|iris|bomb|munition/)) return 'ARMING'
+  if (t.match(/maint|fault|inspect|repair|ground|hydraulic|engine/)) return 'MAINTENANCE'
+  if (t.match(/threat|hostile|contact|radar|drone|movement|perimeter|sector/)) return 'THREAT'
+  if (t.match(/sortie|scramble|taxi|takeoff|landing|aircraft|pilot|ready/)) return 'SORTIE'
+  return 'SYSTEM'
 }
 
 function guessSeverity(text) {
