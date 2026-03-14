@@ -482,7 +482,7 @@ Respond ONLY with valid JSON. No markdown."""
                 config=google_types.GenerateContentConfig(
                     system_instruction=self.persona_prompt,
                     response_mime_type="application/json",
-                    max_output_tokens=500,
+                    max_output_tokens=1000,
                 ),
             )
             return json.loads(response.text)
@@ -496,7 +496,7 @@ Respond ONLY with valid JSON. No markdown."""
         try:
             response = self._orclient.chat.completions.create(
                 model=OPENROUTER_MODEL,
-                max_tokens=500,
+                max_tokens=1000,
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": self.persona_prompt},
@@ -523,7 +523,7 @@ Respond ONLY with valid JSON. No markdown."""
         try:
             response = self._client.messages.create(
                 model="claude-opus-4-6",
-                max_tokens=400,
+                max_tokens=1000,
                 system=self.persona_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
             )
