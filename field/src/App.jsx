@@ -89,11 +89,11 @@ const DOMAIN_ICONS = {
 
 const ROLES = [
   { id: 'mission_control', label: 'Mission Control', Icon: ClipboardDocumentListIcon, desc: 'Create & manage active missions' },
-  { id: 'pad_crew',  label: 'Pad Crew',   Icon: WrenchScrewdriverIcon, desc: 'Fuel, arming & maintenance at pads' },
-  { id: 'convoy',    label: 'Convoy',      Icon: TruckIcon,             desc: 'Fuel supply chain & transport' },
-  { id: 'security',  label: 'Security',    Icon: ShieldCheckIcon,       desc: 'Perimeter watch & threat reports' },
   { id: 'pilot',     label: 'Pilot',       Icon: PaperAirplaneIcon,     desc: 'Flight ops & recovery' },
   { id: 'hq',        label: 'HQ Liaison',  Icon: GlobeAltIcon,          desc: 'Command authority & intel' },
+  { id: 'security',  label: 'Security',    Icon: ShieldCheckIcon,       desc: 'Perimeter watch & threat reports' },
+  { id: 'convoy',    label: 'Convoy',      Icon: TruckIcon,             desc: 'Fuel supply chain & transport' },
+  { id: 'pad_crew',  label: 'Pad Crew',    Icon: WrenchScrewdriverIcon, desc: 'Fuel, arming & maintenance at pads' },
 ]
 
 const QUICK_REPORTS = {
