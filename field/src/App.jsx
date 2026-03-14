@@ -3,9 +3,10 @@
  * Design: Military tactical HUD. JetBrains Mono. Heroicons only.
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useField } from './useField'
 import { useAlerts } from './useAlerts'
+import { useVoiceAgent } from './useVoiceAgent'
 
 // Stable auth info — avoids re-creating object every render (prevents WS reconnect loop)
 function useStableAuth(role, callsign) {
@@ -152,46 +153,6 @@ const QUICK_REPORTS = {
     { Icon: ArrowPathIcon,       label: 'Redirect',       domain: 'SORTIE',      severity: 'HIGH',
       template: 'Redirect [aircraft/sortie] to [new tasking/area]. Priority: [level]. Reason: [context].', prompt: 'What to redirect, where, why?' },
   ],
-}
-
-// ── Speech-to-Text Hook ──────────────────────────────────────────────────────
-
-function useSpeechToText() {
-  const [listening, setListening] = useState(false)
-  const [transcript, setTranscript] = useState('')
-  const [supported, setSupported] = useState(false)
-  const recRef = useRef(null)
-
-  useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (SR) {
-      setSupported(true)
-      const rec = new SR()
-      rec.continuous = true
-      rec.interimResults = true
-      rec.lang = 'en-US'
-      rec.onresult = (e) => {
-        let text = ''
-        for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript
-        setTranscript(text)
-      }
-      rec.onerror = () => setListening(false)
-      rec.onend   = () => setListening(false)
-      recRef.current = rec
-    }
-  }, [])
-
-  const start = useCallback(() => {
-    if (recRef.current && !listening) { setTranscript(''); recRef.current.start(); setListening(true) }
-  }, [listening])
-
-  const stop = useCallback(() => {
-    if (recRef.current && listening) { recRef.current.stop(); setListening(false) }
-  }, [listening])
-
-  const reset = useCallback(() => setTranscript(''), [])
-
-  return { listening, transcript, supported, start, stop, reset }
 }
 
 // ── StatusDot ────────────────────────────────────────────────────────────────
@@ -477,8 +438,23 @@ function FieldDashboard({ role, callsign, onBack }) {
   const feedRef = useRef(null)
   const prevCountRef = useRef(0)
 
-  const { listening, transcript, supported: sttSupported, start: sttStart, stop: sttStop, reset: sttReset } = useSpeechToText()
-  const [pttDomain, setPttDomain] = useState('')
+  const {
+    configured: voiceConfigured,
+    status: voiceStatus,
+    isSpeaking,
+    mode: voiceMode,
+    messages: voiceMessages,
+    tentativeReply,
+    error: voiceError,
+    micMuted,
+    permissionState: voicePermissionState,
+    start: voiceStart,
+    stop: voiceStop,
+    pressToTalk,
+    releaseToTalk,
+  } = useVoiceAgent()
+  const voiceConnected = voiceStatus === 'connected'
+  const recentVoiceMessages = voiceMessages.slice(-2)
 
   // Fire alerts for NEW events (not history replay)
   useEffect(() => {
@@ -499,15 +475,6 @@ function FieldDashboard({ role, callsign, onBack }) {
       return () => clearTimeout(t)
     }
   }, [lastReportId])
-
-  const handlePttSend = useCallback(() => {
-    sttStop()
-    if (transcript.trim()) {
-      const domain = pttDomain || guessDomain(transcript, role)
-      sendReport({ domain, message: transcript.trim(), severity: guessSeverity(transcript), tags: ['voice-report'] })
-      sttReset()
-    }
-  }, [transcript, pttDomain, role, sendReport, sttStop, sttReset])
 
   const quickReports = QUICK_REPORTS[role] || []
 
@@ -660,107 +627,154 @@ function FieldDashboard({ role, callsign, onBack }) {
         background: C.surfaceCard, padding: '8px 10px',
         paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
       }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 8, marginBottom: 8,
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{
+              fontSize: 10,
+              color: C.textPrimary,
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+            }}>
+              Baseops Voice
+            </span>
+            <span style={{ fontSize: 9, color: C.textDim }}>
+              {voiceConnected
+                ? (isSpeaking ? 'Agent speaking' : `Session live • ${voiceMode}`)
+                : 'Session offline'}
+            </span>
+          </div>
+          <button
+            onClick={voiceConnected ? voiceStop : voiceStart}
+            disabled={!voiceConfigured && !voiceConnected}
+            style={{
+              padding: '8px 10px',
+              background: voiceConnected ? `${C.red}15` : `${C.accent}15`,
+              border: `1px solid ${voiceConnected ? `${C.red}55` : `${C.accent}55`}`,
+              color: voiceConnected ? C.red : C.accent,
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              cursor: (!voiceConfigured && !voiceConnected) ? 'not-allowed' : 'pointer',
+              opacity: (!voiceConfigured && !voiceConnected) ? 0.6 : 1,
+            }}
+          >
+            {voiceConnected ? 'End Session' : 'Start Voice'}
+          </button>
+        </div>
 
-        {/* PTT active state */}
-        {listening && (
+        {(voicePermissionState === 'denied' || voiceError || recentVoiceMessages.length > 0 || tentativeReply) && (
           <div style={{
             display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8,
-            padding: '10px 12px', border: `1px solid ${C.red}44`,
-            background: `${C.red}08`,
+            padding: '10px 12px',
+            border: `1px solid rgba(255,255,255,0.08)`,
+            background: C.surfacePrimary,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: C.red, fontWeight: 700,
-                letterSpacing: '0.12em', textTransform: 'uppercase',
-                display: 'flex', alignItems: 'center', gap: 6 }}>
-                <StatusDot color={C.red} pulse />
-                Listening
-              </span>
-              {!pttDomain && (
-                <select value={pttDomain} onChange={e => setPttDomain(e.target.value)} style={{
-                  padding: '4px 6px', background: C.surfacePrimary,
-                  border: `1px solid rgba(255,255,255,0.08)`, color: C.textPrimary,
-                  fontSize: 9, fontFamily: 'inherit', letterSpacing: '0.08em',
-                }}>
-                  <option value="">Auto-domain</option>
-                  {['FUEL', 'ARMING', 'MAINTENANCE', 'SORTIE', 'THREAT'].map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-            {transcript && (
-              <div style={{ fontSize: 10, color: C.textPrimary, lineHeight: 1.5, fontStyle: 'italic' }}>
-                "{transcript}"
+            {voicePermissionState === 'denied' && (
+              <div style={{ fontSize: 10, color: C.red, lineHeight: 1.5 }}>
+                Microphone access is blocked. Allow mic access for this site and reconnect.
               </div>
             )}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={handlePttSend} style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                padding: '11px', background: `${C.accent}22`, border: `1px solid ${C.accent}66`,
-                color: C.accent, fontWeight: 700, fontSize: 10,
-                letterSpacing: '0.15em', textTransform: 'uppercase', cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}>
-                <PaperAirplaneIcon style={{ width: 12, height: 12 }} /> Send
-              </button>
-              <button onClick={() => { sttStop(); sttReset() }} style={{
-                padding: '11px 14px', background: C.surfacePrimary,
-                border: `1px solid rgba(255,255,255,0.08)`,
-                color: C.textMuted, cursor: 'pointer',
-              }}>
-                <XMarkIcon style={{ width: 14, height: 14 }} />
-              </button>
-            </div>
+            {voiceError && (
+              <div style={{ fontSize: 10, color: C.red, lineHeight: 1.5 }}>
+                {voiceError}
+              </div>
+            )}
+            {recentVoiceMessages.map(message => (
+              <div
+                key={message.id}
+                style={{
+                  padding: '8px 10px',
+                  background: C.surfaceCard,
+                  borderLeft: `2px solid ${message.role === 'baseops' ? C.accent : C.grey}`,
+                }}
+              >
+                <div style={{
+                  fontSize: 8,
+                  color: message.role === 'baseops' ? C.accent : C.textDim,
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  marginBottom: 4,
+                }}>
+                  {message.role === 'baseops' ? 'Baseops' : 'You'}
+                </div>
+                <div style={{ fontSize: 10, color: C.textPrimary, lineHeight: 1.5 }}>
+                  {message.text}
+                </div>
+              </div>
+            ))}
+            {tentativeReply && (
+              <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.5, fontStyle: 'italic' }}>
+                {tentativeReply}
+              </div>
+            )}
           </div>
         )}
 
         {/* Quick report grid */}
-        {!listening && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginBottom: 6 }}>
-            {quickReports.map((qr, i) => (
-              <button
-                key={i}
-                onClick={() => setActiveSheet(qr)}
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  justifyContent: 'center', gap: 4, padding: '10px 6px',
-                  background: C.surfacePrimary, border: `1px solid rgba(255,255,255,0.07)`,
-                  color: C.textMuted, fontSize: 9, fontWeight: 700,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                  cursor: 'pointer', lineHeight: 1.3, textAlign: 'center',
-                  fontFamily: 'inherit',
-                }}
-              >
-                <qr.Icon style={{ width: 16, height: 16, color: C.accent }} />
-                {qr.label}
-              </button>
-            ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginBottom: 6 }}>
+          {quickReports.map((qr, i) => (
+            <button
+              key={i}
+              onClick={() => setActiveSheet(qr)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 4, padding: '10px 6px',
+                background: C.surfacePrimary, border: `1px solid rgba(255,255,255,0.07)`,
+                color: C.textMuted, fontSize: 9, fontWeight: 700,
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+                cursor: 'pointer', lineHeight: 1.3, textAlign: 'center',
+                fontFamily: 'inherit',
+              }}
+            >
+              <qr.Icon style={{ width: 16, height: 16, color: C.accent }} />
+              {qr.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Voice PTT button */}
+        <button
+          onMouseDown={pressToTalk}
+          onMouseUp={releaseToTalk}
+          onMouseLeave={releaseToTalk}
+          onTouchStart={(event) => {
+            event.preventDefault()
+            pressToTalk()
+          }}
+          onTouchEnd={(event) => {
+            event.preventDefault()
+            releaseToTalk()
+          }}
+          onTouchCancel={releaseToTalk}
+          disabled={!voiceConnected}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            width: '100%', padding: '14px',
+            border: `1px solid ${voiceConnected ? (micMuted ? `${C.accent}55` : `${C.red}55`) : 'rgba(255,255,255,0.1)'}`,
+            background: voiceConnected
+              ? (micMuted ? C.surfacePrimary : `${C.red}12`)
+              : C.surfacePrimary,
+            color: voiceConnected ? C.textPrimary : C.textDim,
+            fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.15em', textTransform: 'uppercase',
+            cursor: voiceConnected ? 'pointer' : 'not-allowed',
+            userSelect: 'none', fontFamily: 'inherit',
+          }}
+        >
+          <MicrophoneIcon style={{ width: 16, height: 16, color: voiceConnected ? (micMuted ? C.accent : C.red) : C.textDim }} />
+          {!voiceConnected ? 'Start Voice Session First' : (micMuted ? 'Hold to Talk' : 'Release to Transmit')}
+        </button>
+
+        {!voiceConfigured && !voiceConnected && (
+          <div style={{ marginTop: 6 }}>
+            <TextReportBar sendReport={sendReport} role={role} />
           </div>
-        )}
-
-        {/* PTT button */}
-        {!listening && sttSupported && (
-          <button
-            onTouchStart={e => { e.preventDefault(); sttStart() }}
-            onMouseDown={sttStart}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              width: '100%', padding: '14px',
-              border: `1px solid rgba(255,255,255,0.1)`,
-              background: C.surfacePrimary,
-              color: C.textMuted, fontSize: 11, fontWeight: 700,
-              letterSpacing: '0.15em', textTransform: 'uppercase',
-              cursor: 'pointer', userSelect: 'none', fontFamily: 'inherit',
-            }}
-          >
-            <MicrophoneIcon style={{ width: 16, height: 16, color: C.accent }} />
-            Hold to Talk
-          </button>
-        )}
-
-        {/* Text fallback */}
-        {!listening && !sttSupported && (
-          <TextReportBar sendReport={sendReport} role={role} />
         )}
       </div>
 
