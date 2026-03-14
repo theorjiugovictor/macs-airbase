@@ -174,7 +174,7 @@ function useSpeechToText() {
 function RoleSelect({ onSelect }) {
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', height: '100vh',
+      display: 'flex', flexDirection: 'column', height: '100dvh',
       padding: 20, justifyContent: 'center', gap: 12,
     }}>
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
@@ -469,7 +469,7 @@ function FieldDashboard({ role, callsign, onBack }) {
   const roleInfo = ROLES.find(r => r.id === role)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
       {/* ── Header ── */}
       <header style={{
         padding: '10px 16px', borderBottom: '1px solid #1f2937',
@@ -574,7 +574,7 @@ function FieldDashboard({ role, callsign, onBack }) {
       <div style={{
         flexShrink: 0, borderTop: '1px solid #1f2937',
         background: '#0d1117', padding: '8px 10px',
-        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+        paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
       }}>
         {/* PTT bar (always visible) */}
         {listening ? (
