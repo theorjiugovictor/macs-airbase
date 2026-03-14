@@ -19,7 +19,7 @@ const WS_URL = _wsUrl()
 const MAX_EVENTS = 100
 const RECONNECT_MS = 3000
 
-export function useField(token) {
+export function useField(authInfo) {
   const [events, setEvents] = useState([])
   const [connected, setConnected] = useState(false)
   const [role, setRole] = useState(null)
@@ -38,9 +38,13 @@ export function useField(token) {
     ws.onopen = () => {
       setConnected(true)
       setAuthError(null)
-      // Authenticate immediately
-      if (token) {
-        ws.send(JSON.stringify({ type: 'auth', token }))
+      // Authenticate with role + callsign
+      if (authInfo?.role) {
+        ws.send(JSON.stringify({
+          type: 'auth',
+          role: authInfo.role,
+          callsign: authInfo.callsign || 'FIELD',
+        }))
       }
     }
 

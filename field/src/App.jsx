@@ -348,17 +348,23 @@ function EventCard({ event, compact }) {
 
 export default function App() {
   const [selectedRole, setSelectedRole] = useState(null)
+  const [callsign, setCallsign] = useState(null)
 
-  if (!selectedRole) {
-    return <RoleSelect onSelect={setSelectedRole} />
+  const handleSelect = (roleId) => {
+    setSelectedRole(roleId)
+    setCallsign(`${roleId.toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`)
   }
 
-  return <FieldDashboard role={selectedRole} onBack={() => setSelectedRole(null)} />
+  if (!selectedRole) {
+    return <RoleSelect onSelect={handleSelect} />
+  }
+
+  return <FieldDashboard role={selectedRole} callsign={callsign} onBack={() => setSelectedRole(null)} />
 }
 
 
-function FieldDashboard({ role, onBack }) {
-  const { events, connected, sendReport, lastReportId } = useField(null)
+function FieldDashboard({ role, callsign, onBack }) {
+  const { events, connected, sendReport, lastReportId } = useField({ role, callsign })
   const [activeSheet, setActiveSheet] = useState(null)     // quick report sheet
   const [feedMode, setFeedMode] = useState('smart')        // 'smart' | 'all'
   const [reportFeedback, setReportFeedback] = useState(null)

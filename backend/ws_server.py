@@ -22,7 +22,7 @@ from dataclasses import asdict
 import websockets
 
 from shared_state import bulletin
-from auth import verify_token, filter_event_for_role, can_report_domain
+from auth import verify_token, filter_event_for_role, can_report_domain, VALID_ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -68,25 +68,37 @@ def get_client_session(ws):
 # ── Inbound message handlers ────────────────────────────────────────────────
 
 async def _handle_auth(session: ClientSession, data: dict):
-    """Handle AUTH message — validate JWT and upgrade session role."""
+    """Handle AUTH message — validate JWT or accept simple role+callsign (demo mode)."""
+
     token = data.get("token", "")
-    payload = verify_token(token)
+    role_direct = data.get("role", "")
+    callsign_direct = data.get("callsign", "")
+
+    # Try JWT first
+    payload = verify_token(token) if token else None
 
     if payload:
         session.role = payload["role"]
         session.callsign = payload.get("callsign", "UNKNOWN")
         session.authenticated = True
-        logger.info(f"Authenticated: {session.callsign} as {session.role}")
-        await session.ws.send(json.dumps({
-            "type": "auth_ok",
-            "role": session.role,
-            "callsign": session.callsign,
-        }))
+    elif role_direct and role_direct in VALID_ROLES:
+        # Demo mode: accept simple role + callsign without JWT
+        session.role = role_direct
+        session.callsign = callsign_direct or f"{role_direct.upper()}-FIELD"
+        session.authenticated = True
     else:
         await session.ws.send(json.dumps({
             "type": "auth_error",
-            "message": "Invalid or expired token",
+            "message": "Invalid token or role",
         }))
+        return
+
+    logger.info(f"Authenticated: {session.callsign} as {session.role}")
+    await session.ws.send(json.dumps({
+        "type": "auth_ok",
+        "role": session.role,
+        "callsign": session.callsign,
+    }))
 
 
 async def _handle_field_report(session: ClientSession, data: dict):
