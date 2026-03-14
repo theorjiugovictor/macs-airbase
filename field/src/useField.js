@@ -154,6 +154,20 @@ export function useField(authInfo) {
     }
   }, []);
 
+  const sendVoiceEvent = useCallback((voiceEvent) => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: "voice_event",
+          ...voiceEvent,
+        }),
+      );
+      return true;
+    }
+    return false;
+  }, []);
+
   // Filter: only show events relevant to field — memoized to avoid re-render cascades
   const fieldEvents = useMemo(
     () =>
@@ -166,6 +180,9 @@ export function useField(authInfo) {
         if (e.event_type === "ACTION_TAKEN") return true;
         // Show agent lifecycle (kill/revive visibility)
         if (e.event_type === "AGENT_ONLINE" || e.event_type === "AGENT_OFFLINE")
+          return true;
+        // Show voice-originated conversation artifacts
+        if (e.event_type === "VOICE_COMMAND" || e.event_type === "VOICE_SUMMARY")
           return true;
         // Show sensor alerts
         if (e.source_layer === "SENSOR" && e.severity !== "INFO") return true;
@@ -186,5 +203,6 @@ export function useField(authInfo) {
     authError,
     lastReportId,
     sendReport,
+    sendVoiceEvent,
   };
 }

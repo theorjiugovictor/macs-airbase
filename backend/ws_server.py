@@ -8,6 +8,7 @@ Outbound (server → client):
 Inbound (client → server):
   - AUTH: authenticate with JWT token for role-based access
   - FIELD_REPORT: submit field intelligence to the bulletin board
+  - VOICE_EVENT: submit voice commands/summaries to the bulletin board
 
 Runs in its own asyncio event loop in a background thread.
 """
@@ -159,6 +160,59 @@ async def _handle_field_report(session: ClientSession, data: dict):
     }))
 
 
+async def _handle_voice_event(session: ClientSession, data: dict):
+    """Handle voice-originated commander and BASEOPS events."""
+    speaker = data.get("speaker", "commander").strip().lower()
+    message = data.get("message", "").strip()
+    domain = data.get("domain", "SYSTEM").upper() or "SYSTEM"
+    severity = data.get("severity", "INFO").upper()
+    tags = data.get("tags", [])
+
+    if not message:
+        await session.ws.send(json.dumps({
+            "type": "voice_error",
+            "message": "Voice event message cannot be empty",
+        }))
+        return
+
+    valid_domains = {"FUEL", "ARMING", "MAINTENANCE", "SORTIE", "THREAT", "SYSTEM"}
+    if domain not in valid_domains:
+        domain = "SYSTEM"
+
+    payload = {
+        "message": message,
+        "field_role": session.role,
+        "field_callsign": session.callsign,
+        "speaker": speaker,
+    }
+
+    if speaker == "baseops":
+        source = "BASEOPS_VOICE"
+        event_type = "VOICE_SUMMARY"
+        source_layer = "API"
+        event_tags = ["voice", "voice-summary", session.role]
+    else:
+        source = f"VOICE:{session.callsign}"
+        event_type = "VOICE_COMMAND"
+        source_layer = "CROWD"
+        event_tags = ["voice", "voice-command", session.role]
+
+    event = bulletin.post(
+        source=source,
+        event_type=event_type,
+        domain=domain,
+        severity=severity,
+        payload=payload,
+        tags=event_tags + tags,
+        source_layer=source_layer,
+    )
+
+    await session.ws.send(json.dumps({
+        "type": "voice_ok",
+        "event_id": event.id,
+    }))
+
+
 # ── Connection handler ───────────────────────────────────────────────────────
 
 async def _handler(websocket):
@@ -186,6 +240,9 @@ async def _handler(websocket):
 
                 elif msg_type == "field_report":
                     await _handle_field_report(session, data)
+
+                elif msg_type == "voice_event":
+                    await _handle_voice_event(session, data)
 
                 elif msg_type == "ping":
                     await websocket.send(json.dumps({"type": "pong", "ts": time.time()}))

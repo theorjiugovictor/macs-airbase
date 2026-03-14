@@ -70,15 +70,6 @@ async function resolveSessionConfig() {
   return { agentId: AGENT_ID }
 }
 
-async function ensureMicAccess() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error('This browser does not support microphone access.')
-  }
-
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-  stream.getTracks().forEach(track => track.stop())
-}
-
 export function useVoiceAgent() {
   const [messages, setMessages] = useState([])
   const [tentativeReply, setTentativeReply] = useState('')
@@ -91,6 +82,7 @@ export function useVoiceAgent() {
 
   const conversation = useConversation({
     micMuted,
+    volume: 1,
     serverLocation: SERVER_LOCATION,
     onConnect: () => {
       setError('')
@@ -159,14 +151,13 @@ export function useVoiceAgent() {
     try {
       setError('')
       setPermissionState('requesting')
-      await ensureMicAccess()
-      setPermissionState('granted')
 
       const sessionConfig = await resolveSessionConfig()
       await conversation.startSession({
         connectionType: CONNECTION_TYPE,
         ...sessionConfig,
       })
+      setPermissionState('granted')
       setMicMuted(true)
     } catch (nextError) {
       const message = typeof nextError?.message === 'string'

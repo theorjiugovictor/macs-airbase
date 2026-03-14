@@ -429,7 +429,7 @@ export default function App() {
 
 function FieldDashboard({ role, callsign, onBack }) {
   const authInfo = useStableAuth(role, callsign)
-  const { events, connected, sendReport, lastReportId } = useField(authInfo)
+  const { events, connected, sendReport, sendVoiceEvent, lastReportId } = useField(authInfo)
   const { notify } = useAlerts()
   const [activeSheet, setActiveSheet] = useState(null)
   const [feedMode, setFeedMode] = useState('smart')
@@ -437,6 +437,7 @@ function FieldDashboard({ role, callsign, onBack }) {
   const [muted, setMuted] = useState(false)
   const feedRef = useRef(null)
   const prevCountRef = useRef(0)
+  const postedVoiceRef = useRef(new Map())
 
   const {
     configured: voiceConfigured,
@@ -476,6 +477,28 @@ function FieldDashboard({ role, callsign, onBack }) {
     }
   }, [lastReportId])
 
+  useEffect(() => {
+    voiceMessages.forEach((message) => {
+      const text = message?.text?.trim()
+      if (!text) return
+
+      const previous = postedVoiceRef.current.get(message.id)
+      if (previous === text) return
+
+      const sent = sendVoiceEvent({
+        speaker: message.role === 'baseops' ? 'baseops' : 'commander',
+        message: text,
+        domain: guessVoiceDomain(text),
+        severity: guessSeverity(text),
+        tags: [message.role === 'baseops' ? 'baseops-voice' : 'commander-voice'],
+      })
+
+      if (sent) {
+        postedVoiceRef.current.set(message.id, text)
+      }
+    })
+  }, [sendVoiceEvent, voiceMessages])
+
   const quickReports = QUICK_REPORTS[role] || []
 
   const { forYou, digest, allFiltered } = useMemo(() => {
@@ -483,11 +506,14 @@ function FieldDashboard({ role, callsign, onBack }) {
     const critHigh = events.filter(e =>
       (e.severity === 'CRITICAL' || e.severity === 'HIGH') && !(e.directed_to || []).length
     ).slice(-5)
+    const recentVoice = events.filter(e =>
+      e.event_type === 'VOICE_COMMAND' || e.event_type === 'VOICE_SUMMARY'
+    ).slice(-4)
     const latestPerAgent = {}
     events.forEach(e => { if (e.event_type === 'ACTION_TAKEN') latestPerAgent[e.source] = e })
     const seen = new Set(); const digest = []
     const addUnique = (arr) => arr.forEach(e => { if (!seen.has(e.id)) { seen.add(e.id); digest.push(e) } })
-    addUnique(forYou); addUnique(critHigh); addUnique(Object.values(latestPerAgent))
+    addUnique(forYou); addUnique(critHigh); addUnique(recentVoice); addUnique(Object.values(latestPerAgent))
     digest.sort((a, b) => b.timestamp - a.timestamp)
     return { forYou, digest, allFiltered: events }
   }, [events])
@@ -840,6 +866,16 @@ function guessDomain(text, role) {
   if (t.match(/sortie|scramble|taxi|takeoff|landing|aircraft|pilot|ready/)) return 'SORTIE'
   const roleDefaults = { pad_crew: 'MAINTENANCE', convoy: 'FUEL', security: 'THREAT', pilot: 'SORTIE', hq: 'SORTIE' }
   return roleDefaults[role] || 'SYSTEM'
+}
+
+function guessVoiceDomain(text) {
+  const t = text.toLowerCase()
+  if (t.match(/fuel|truck|convoy|jp-8|tanker|spill|delivery/)) return 'FUEL'
+  if (t.match(/arm|weapon|ordnance|loadout|amraam|iris|bomb|munition/)) return 'ARMING'
+  if (t.match(/maint|fault|inspect|repair|ground|hydraulic|engine/)) return 'MAINTENANCE'
+  if (t.match(/threat|hostile|contact|radar|drone|movement|perimeter|sector/)) return 'THREAT'
+  if (t.match(/sortie|scramble|taxi|takeoff|landing|aircraft|pilot|ready/)) return 'SORTIE'
+  return 'SYSTEM'
 }
 
 function guessSeverity(text) {
