@@ -168,11 +168,15 @@ function RoleSelect({ onSelect }) {
       padding: 20, justifyContent: 'center', gap: 12,
     }}>
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <Plane size={26} />
-          <span style={{ fontSize: 28, fontWeight: 800 }}>MACS FIELD</span>
-        </div>
+        <img
+          src="/field/img/macs_logo_white.png"
+          alt="MACS Airbase"
+          style={{ height: 48, objectFit: 'contain', marginBottom: 4 }}
+        />
         <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
+          Multi-Agent Command System &mdash; Field App
+        </div>
+        <div style={{ color: '#4b5563', fontSize: 11, marginTop: 2 }}>
           Select your role to begin
         </div>
       </div>
@@ -450,8 +454,7 @@ function FieldDashboard({ role, onBack }) {
               background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer',
               padding: 4, marginLeft: -4,
             }}><ArrowLeft size={18} /></button>
-            <Plane size={16} />
-            <span style={{ fontSize: 16, fontWeight: 800 }}>MACS</span>
+            <img src="/field/img/macs_logo_white.png" alt="MACS" style={{ height: 20, objectFit: 'contain' }} />
             <span style={{
               fontSize: 10, padding: '2px 8px', borderRadius: 9999,
               background: `${threatColor}22`, color: threatColor,
