@@ -66,6 +66,7 @@ from scenarios import ScenarioRunner
 from ws_server import start_ws_server
 from world_state import start_world_state
 from sensors import SensorSimulator
+from http_api import start_http_api
 
 logging.basicConfig(
     level=logging.INFO,
@@ -250,6 +251,11 @@ def main():
     sensor_sim = SensorSimulator(args.scenario)
     sensor_sim.start()
     print("  Sensors : active (radar, fuel gauge, weather, EW, perimeter)")
+
+    # Start HTTP API for ElevenLabs voice agent
+    if not args.no_ws:
+        start_http_api(agent_map, world_state_mgr, port=8080)
+        print("  HTTP API: http://localhost:8080")
 
     print(f"\n{BOLD}MACS Airbase active. Scenario '{args.scenario}' running.{RESET}\n")
 
