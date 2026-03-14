@@ -60,6 +60,10 @@ class SensorConfig:
         self.perimeter_interval = 15
         self.perimeter_alert_prob = 0.05
 
+        # Aircraft telemetry — per-aircraft status updates
+        self.aircraft_interval = 15
+        self.aircraft_count = 6
+
         # Scenario-specific tuning
         if scenario == "scramble":
             self.radar_track_prob = 0.6
@@ -255,6 +259,222 @@ def _gen_perimeter(cfg: SensorConfig, state: dict) -> Optional[dict]:
     }
 
 
+# ── Aircraft Telemetry ──────────────────────────────────────────────────────
+
+AIRCRAFT_PHASES = [
+    "SHELTER",       # in hardened shelter, cold
+    "PRE_FLIGHT",    # crew boarding, systems check
+    "FUELING",       # JP-8 being pumped
+    "ARMING",        # ordnance loading
+    "TAXI",          # moving to runway
+    "TAKEOFF",       # rolling / climbing
+    "AIRBORNE",      # in flight
+    "RTB",           # returning to base
+    "LANDING",       # approach / touchdown
+    "POST_FLIGHT",   # inspection after recovery
+    "MAINTENANCE",   # in maintenance bay
+    "GROUNDED",      # unserviceable
+]
+
+LOADOUT_CONFIGS = [
+    {"type": "air-to-air", "primary": "IRIS-T", "secondary": "AMRAAM", "rounds": "120mm cannon 150rds"},
+    {"type": "multirole", "primary": "AMRAAM", "secondary": "GBU-39", "rounds": "120mm cannon 150rds"},
+    {"type": "CAS", "primary": "GBU-39", "secondary": "Maverick", "rounds": "120mm cannon 150rds"},
+    {"type": "SEAD", "primary": "HARM", "secondary": "AMRAAM", "rounds": "120mm cannon 150rds"},
+]
+
+PAD_NAMES = ["Alpha-1", "Alpha-2", "Bravo-1", "Bravo-2", "Charlie-1", "Charlie-2"]
+
+
+def _init_aircraft_fleet(cfg: SensorConfig, state: dict):
+    """Initialize the aircraft fleet state on first call."""
+    if "aircraft" in state:
+        return
+
+    fleet = {}
+    for i in range(1, cfg.aircraft_count + 1):
+        ac_id = f"Gripen-{i:02d}"
+        loadout = random.choice(LOADOUT_CONFIGS)
+        fleet[ac_id] = {
+            "id": ac_id,
+            "phase": random.choice(["SHELTER", "SHELTER", "SHELTER", "PRE_FLIGHT", "FUELING"]),
+            "pad": PAD_NAMES[i - 1] if i <= len(PAD_NAMES) else f"Pad-{i}",
+            "fuel_pct": random.randint(40, 95),
+            "loadout": loadout["type"],
+            "loadout_detail": loadout,
+            "pilot": random.choice([f"Pilot-{c}" for c in "ABCDEF"]),
+            "hours_since_inspection": round(random.uniform(0, 20), 1),
+            "serviceable": True,
+            "heading": 0,
+            "altitude_ft": 0,
+            "speed_kts": 0,
+            "flight_time_min": 0,
+        }
+    state["aircraft"] = fleet
+    state["aircraft_last_transition"] = {ac_id: time.time() for ac_id in fleet}
+
+
+def _gen_aircraft_telemetry(cfg: SensorConfig, state: dict) -> Optional[dict]:
+    """Simulate per-aircraft status telemetry. Reports on 1-2 aircraft per tick."""
+    _init_aircraft_fleet(cfg, state)
+    fleet = state["aircraft"]
+    last_t = state["aircraft_last_transition"]
+    now = time.time()
+
+    # Pick 1-2 aircraft to update
+    ac_ids = random.sample(list(fleet.keys()), min(2, len(fleet)))
+    reports = []
+
+    for ac_id in ac_ids:
+        ac = fleet[ac_id]
+        elapsed = now - last_t[ac_id]
+
+        # Phase transitions based on elapsed time + randomness
+        old_phase = ac["phase"]
+        new_phase = _advance_phase(ac, elapsed, cfg)
+
+        if new_phase != old_phase:
+            ac["phase"] = new_phase
+            last_t[ac_id] = now
+            _update_aircraft_dynamics(ac)
+
+        # Fuel drain for airborne aircraft
+        if ac["phase"] == "AIRBORNE":
+            ac["fuel_pct"] = max(5, ac["fuel_pct"] - random.uniform(0.3, 0.8))
+            ac["flight_time_min"] += cfg.aircraft_interval / 60
+            ac["heading"] = (ac["heading"] + random.randint(-10, 10)) % 360
+        elif ac["phase"] == "FUELING":
+            ac["fuel_pct"] = min(100, ac["fuel_pct"] + random.uniform(3, 8))
+
+        # Random fault injection
+        if ac["serviceable"] and ac["phase"] not in ("AIRBORNE", "TAKEOFF", "LANDING") \
+                and random.random() < 0.01:
+            ac["serviceable"] = False
+            ac["phase"] = "GROUNDED"
+            last_t[ac_id] = now
+            reports.append(ac)
+            continue
+
+        reports.append(ac)
+
+    if not reports:
+        return None
+
+    # Build event — report all updated aircraft
+    aircraft_data = []
+    for ac in reports:
+        aircraft_data.append({
+            "id": ac["id"],
+            "phase": ac["phase"],
+            "pad": ac["pad"],
+            "fuel_pct": round(ac["fuel_pct"], 1),
+            "loadout": ac["loadout"],
+            "pilot": ac["pilot"],
+            "serviceable": ac["serviceable"],
+            "heading": ac["heading"],
+            "altitude_ft": ac["altitude_ft"],
+            "speed_kts": ac["speed_kts"],
+            "flight_time_min": round(ac["flight_time_min"], 1),
+            "hours_since_inspection": round(ac["hours_since_inspection"], 1),
+        })
+
+    # Summary message
+    summaries = []
+    for a in aircraft_data:
+        if a["phase"] == "AIRBORNE":
+            summaries.append(f"{a['id']} airborne hdg {a['heading']:03d} FL{a['altitude_ft']//100} "
+                           f"fuel {a['fuel_pct']:.0f}%")
+        elif a["phase"] == "GROUNDED":
+            summaries.append(f"{a['id']} GROUNDED at {a['pad']} — unserviceable")
+        else:
+            summaries.append(f"{a['id']} {a['phase']} at {a['pad']} fuel {a['fuel_pct']:.0f}%")
+
+    severity = "INFO"
+    for a in aircraft_data:
+        if not a["serviceable"]:
+            severity = "HIGH"
+            break
+        if a["fuel_pct"] < 20:
+            severity = "AMBER"
+        if a["phase"] in ("AIRBORNE", "TAKEOFF", "LANDING") and severity == "INFO":
+            severity = "MEDIUM"
+
+    return {
+        "event_type": "AIRCRAFT_TELEMETRY",
+        "domain": "SORTIE",
+        "severity": severity,
+        "payload": {
+            "message": "Aircraft telemetry: " + "; ".join(summaries),
+            "aircraft": aircraft_data,
+            "fleet_summary": {
+                "total": len(fleet),
+                "serviceable": sum(1 for a in fleet.values() if a["serviceable"]),
+                "airborne": sum(1 for a in fleet.values() if a["phase"] == "AIRBORNE"),
+                "grounded": sum(1 for a in fleet.values() if a["phase"] == "GROUNDED"),
+                "fueling": sum(1 for a in fleet.values() if a["phase"] == "FUELING"),
+                "arming": sum(1 for a in fleet.values() if a["phase"] == "ARMING"),
+                "ready": sum(1 for a in fleet.values()
+                            if a["phase"] == "SHELTER" and a["serviceable"] and a["fuel_pct"] > 50),
+            },
+        },
+        "tags": ["aircraft", "telemetry", "sensor"],
+    }
+
+
+def _advance_phase(ac: dict, elapsed: float, cfg: SensorConfig) -> str:
+    """State machine for aircraft phase transitions."""
+    phase = ac["phase"]
+    prob = min(0.4, elapsed / 120)  # higher chance to transition as time passes
+
+    if not ac["serviceable"]:
+        return "GROUNDED"
+
+    transitions = {
+        "SHELTER":     ["PRE_FLIGHT"],
+        "PRE_FLIGHT":  ["FUELING"],
+        "FUELING":     ["ARMING"] if ac["fuel_pct"] > 80 else ["FUELING"],
+        "ARMING":      ["TAXI"],
+        "TAXI":        ["TAKEOFF"],
+        "TAKEOFF":     ["AIRBORNE"],
+        "AIRBORNE":    ["RTB"] if ac["fuel_pct"] < 25 or ac["flight_time_min"] > 45 else ["AIRBORNE"],
+        "RTB":         ["LANDING"],
+        "LANDING":     ["POST_FLIGHT"],
+        "POST_FLIGHT": ["SHELTER"],
+        "MAINTENANCE": ["SHELTER"] if elapsed > 60 else ["MAINTENANCE"],
+        "GROUNDED":    ["MAINTENANCE"],
+    }
+
+    candidates = transitions.get(phase, [phase])
+    if candidates[0] != phase and random.random() < prob:
+        next_phase = candidates[0]
+        # Reset flight data on landing
+        if next_phase == "POST_FLIGHT":
+            ac["flight_time_min"] = 0
+        return next_phase
+    return phase
+
+
+def _update_aircraft_dynamics(ac: dict):
+    """Update speed/altitude based on phase."""
+    phase = ac["phase"]
+    if phase == "TAKEOFF":
+        ac["altitude_ft"] = random.randint(1000, 5000)
+        ac["speed_kts"] = random.randint(200, 350)
+        ac["heading"] = random.choice([0, 45, 90, 135, 180, 225, 270, 315])
+    elif phase == "AIRBORNE":
+        ac["altitude_ft"] = random.randint(15000, 35000)
+        ac["speed_kts"] = random.randint(400, 700)
+    elif phase == "RTB":
+        ac["altitude_ft"] = random.randint(5000, 15000)
+        ac["speed_kts"] = random.randint(300, 500)
+    elif phase == "LANDING":
+        ac["altitude_ft"] = random.randint(0, 1000)
+        ac["speed_kts"] = random.randint(120, 180)
+    else:
+        ac["altitude_ft"] = 0
+        ac["speed_kts"] = 0
+
+
 # ── Sensor Simulator (Main Class) ───────────────────────────────────────────
 
 class SensorSimulator:
@@ -285,11 +505,12 @@ class SensorSimulator:
     def _loop(self):
         """Run sensor feeds at their respective intervals using a tick-based scheduler."""
         schedule = {
-            "radar":     {"interval": self.cfg.radar_interval,     "gen": _gen_radar_sweep,  "last": 0},
-            "fuel":      {"interval": self.cfg.fuel_interval,      "gen": _gen_fuel_telemetry, "last": 0},
-            "weather":   {"interval": self.cfg.weather_interval,   "gen": _gen_weather,      "last": 0},
-            "ew":        {"interval": self.cfg.ew_interval,        "gen": _gen_ew_scan,      "last": 0},
-            "perimeter": {"interval": self.cfg.perimeter_interval, "gen": _gen_perimeter,    "last": 0},
+            "radar":     {"interval": self.cfg.radar_interval,     "gen": _gen_radar_sweep,        "last": 0},
+            "fuel":      {"interval": self.cfg.fuel_interval,      "gen": _gen_fuel_telemetry,     "last": 0},
+            "weather":   {"interval": self.cfg.weather_interval,   "gen": _gen_weather,            "last": 0},
+            "ew":        {"interval": self.cfg.ew_interval,        "gen": _gen_ew_scan,            "last": 0},
+            "perimeter": {"interval": self.cfg.perimeter_interval, "gen": _gen_perimeter,          "last": 0},
+            "aircraft":  {"interval": self.cfg.aircraft_interval,  "gen": _gen_aircraft_telemetry, "last": 0},
         }
 
         while self._alive:

@@ -283,6 +283,69 @@ class TestWorldState:
         assert mgr.state.fuel_level_pct == 100
         assert mgr.state.aircraft_serviceable == 0
 
+    def test_aircraft_telemetry_populates_registry(self):
+        """AIRCRAFT_TELEMETRY sensor events should populate per-aircraft state."""
+        from world_state import WorldStateManager
+        from shared_state import Event
+
+        mgr = WorldStateManager("surge")
+        ac_data = [
+            {"id": "Gripen-01", "phase": "AIRBORNE", "pad": "Alpha-1",
+             "fuel_pct": 72.5, "loadout": "air-to-air", "pilot": "Pilot-A",
+             "serviceable": True, "heading": 90, "altitude_ft": 25000,
+             "speed_kts": 600, "flight_time_min": 12.0, "hours_since_inspection": 3.5},
+            {"id": "Gripen-02", "phase": "SHELTER", "pad": "Alpha-2",
+             "fuel_pct": 95.0, "loadout": "multirole", "pilot": "Pilot-B",
+             "serviceable": True, "heading": 0, "altitude_ft": 0,
+             "speed_kts": 0, "flight_time_min": 0, "hours_since_inspection": 1.2},
+            {"id": "Gripen-03", "phase": "GROUNDED", "pad": "Bravo-1",
+             "fuel_pct": 50.0, "loadout": "CAS", "pilot": "Pilot-C",
+             "serviceable": False, "heading": 0, "altitude_ft": 0,
+             "speed_kts": 0, "flight_time_min": 0, "hours_since_inspection": 18.0},
+        ]
+        ev = Event(
+            id="EVT-AC-1", timestamp=time.time(), source="SENSOR",
+            event_type="AIRCRAFT_TELEMETRY", domain="SORTIE", severity="INFO",
+            source_layer="SENSOR",
+            payload={"message": "Aircraft telemetry", "aircraft": ac_data},
+        )
+        mgr.observe(ev)
+
+        assert len(mgr.state.aircraft_registry) == 3
+        assert mgr.state.aircraft_registry["Gripen-01"]["phase"] == "AIRBORNE"
+        assert mgr.state.aircraft_registry["Gripen-03"]["serviceable"] is False
+
+        # Aggregate counts should be derived from registry (>=3 aircraft)
+        assert mgr.state.aircraft_airborne == 1
+        assert mgr.state.aircraft_grounded == 1
+        assert mgr.state.aircraft_serviceable == 2
+
+        # Snapshot should include per-aircraft data
+        snap = mgr.snapshot()
+        assert "Gripen-01" in snap["aircraft"]
+        assert snap["aircraft"]["Gripen-01"]["altitude_ft"] == 25000
+
+    def test_sensor_generates_aircraft_telemetry(self):
+        """SensorSimulator's aircraft generator should produce valid telemetry."""
+        from sensors import SensorConfig, _gen_aircraft_telemetry
+
+        cfg = SensorConfig("surge")
+        state = {}
+        result = _gen_aircraft_telemetry(cfg, state)
+
+        assert result is not None
+        assert result["event_type"] == "AIRCRAFT_TELEMETRY"
+        assert result["domain"] == "SORTIE"
+        assert "aircraft" in result["payload"]
+        assert "fleet_summary" in result["payload"]
+        assert len(result["payload"]["aircraft"]) >= 1
+
+        ac = result["payload"]["aircraft"][0]
+        assert "id" in ac
+        assert "phase" in ac
+        assert "fuel_pct" in ac
+        assert "loadout" in ac
+
 
 # ── Run ───────────────────────────────────────────────────────────────────
 

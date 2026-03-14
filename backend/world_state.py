@@ -50,6 +50,16 @@ class WorldState:
     scenario: str = "unknown"
     updated_at: float = 0.0
 
+    # Per-aircraft tracking  (populated from AIRCRAFT_TELEMETRY sensor events)
+    # Each entry: {"id", "phase", "pad", "fuel_pct", "loadout", "pilot",
+    #              "serviceable", "heading", "altitude_ft", "speed_kts",
+    #              "flight_time_min", "hours_since_inspection"}
+    aircraft_registry: dict = None  # ac_id -> dict
+
+    def __post_init__(self):
+        if self.aircraft_registry is None:
+            self.aircraft_registry = {}
+
 
 class WorldStateManager:
     EMIT_COOLDOWN = 15.0  # seconds — don't spam world-state updates
@@ -119,6 +129,9 @@ class WorldStateManager:
                 "base": {
                     "bases_active": s.bases_active,
                     "dispersal_active": s.dispersal_active,
+                },
+                "aircraft": {
+                    ac_id: dict(ac) for ac_id, ac in s.aircraft_registry.items()
                 },
             }
 
@@ -212,6 +225,25 @@ class WorldStateManager:
             charlie = int(p.get("charlie_aircraft", 0))
             if bravo + charlie > 0:
                 s.bases_active = 2 if charlie == 0 else 3
+
+        # Aircraft telemetry — per-aircraft state updates from sensor sim
+        if event.event_type == "AIRCRAFT_TELEMETRY":
+            for ac_data in p.get("aircraft", []):
+                ac_id = ac_data.get("id")
+                if ac_id:
+                    s.aircraft_registry[ac_id] = dict(ac_data)
+            # Derive aggregate counts from registry when we have enough data
+            if len(s.aircraft_registry) >= 3:
+                s.aircraft_total = len(s.aircraft_registry)
+                s.aircraft_serviceable = sum(
+                    1 for a in s.aircraft_registry.values() if a.get("serviceable", True)
+                )
+                s.aircraft_airborne = sum(
+                    1 for a in s.aircraft_registry.values() if a.get("phase") == "AIRBORNE"
+                )
+                s.aircraft_grounded = sum(
+                    1 for a in s.aircraft_registry.values() if a.get("phase") == "GROUNDED"
+                )
 
         self._clamp()
         return before != self.snapshot()
