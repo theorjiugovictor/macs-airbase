@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useField } from './useField'
 import { useAlerts } from './useAlerts'
 import { useVoiceAgent } from './useVoiceAgent'
+import About from './About'
 
 // Stable auth info — avoids re-creating object every render (prevents WS reconnect loop)
 function useStableAuth(role, callsign) {
@@ -47,6 +48,7 @@ import {
   PlusIcon,
   MapPinIcon,
   ClockIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/solid'
 
 // ── Design tokens ───────────────────────────────────────────────────────────
@@ -173,7 +175,7 @@ function StatusDot({ color, pulse }) {
 
 // ── Role Selection ───────────────────────────────────────────────────────────
 
-function RoleSelect({ onSelect }) {
+function RoleSelect({ onSelect, onAbout }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', height: '100dvh',
@@ -214,6 +216,24 @@ function RoleSelect({ onSelect }) {
           </div>
         </button>
       ))}
+
+      <button
+        onClick={onAbout}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '14px 14px', marginTop: 4,
+          background: 'transparent', border: `1px solid rgba(255,255,255,0.04)`,
+          color: C.textDim, cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <InformationCircleIcon style={{ width: 20, height: 20, color: C.textDim, flexShrink: 0 }} />
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            About
+          </div>
+          <div style={{ color: C.textDim, fontSize: 9, marginTop: 2 }}>Meet the team</div>
+        </div>
+      </button>
     </div>
   )
 }
@@ -425,7 +445,8 @@ export default function App() {
     setCallsign(`${roleId.toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`)
   }
 
-  if (!selectedRole) return <RoleSelect onSelect={handleSelect} />
+  if (!selectedRole) return <RoleSelect onSelect={handleSelect} onAbout={() => setSelectedRole('about')} />
+  if (selectedRole === 'about') return <About onBack={() => setSelectedRole(null)} />
   if (selectedRole === 'mission_control') {
     return <MissionControlDashboard role={selectedRole} callsign={callsign} onBack={() => setSelectedRole(null)} />
   }
