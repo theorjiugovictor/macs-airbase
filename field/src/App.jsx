@@ -7,10 +7,18 @@
  *   - Live AI-directed actions feed
  *   - Threat level indicator
  *   - Custom report with text input
+ *
+ * All icons via lucide-react (MIT) — no emoji.
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useField } from './useField'
+import {
+  Plane, PlaneLanding, Droplets, Crosshair, Wrench, Radar, Globe,
+  Truck, Shield, Radio, Eye, Zap, CheckCircle2, AlertTriangle,
+  RefreshCw, Ban, Volume2, ClipboardList, Scale, MessageSquare,
+  Send, Circle, Feather, Target,
+} from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -24,55 +32,55 @@ const SEVERITY_COLOR = {
   MEDIUM: '#06b6d4', LOW: '#22c55e', INFO: '#4b5563',
 }
 
-const DOMAIN_ICON = {
-  SORTIE: '✈', FUEL: '⛽', ARMING: '🎯',
-  MAINTENANCE: '🔧', THREAT: '📡', SYSTEM: '🌐',
+const DOMAIN_ICONS = {
+  SORTIE: Plane, FUEL: Droplets, ARMING: Crosshair,
+  MAINTENANCE: Wrench, THREAT: Radar, SYSTEM: Globe,
 }
 
 const ROLES = [
-  { id: 'pad_crew', label: 'Pad Crew', icon: '🔧', desc: 'Fuel, arming & maintenance at pads' },
-  { id: 'convoy', label: 'Convoy', icon: '🚛', desc: 'Fuel supply chain & transport' },
-  { id: 'security', label: 'Security', icon: '🛡️', desc: 'Perimeter watch & threat reports' },
-  { id: 'pilot', label: 'Pilot', icon: '✈️', desc: 'Flight ops & recovery' },
-  { id: 'hq', label: 'HQ Liaison', icon: '📡', desc: 'Command authority & intel' },
+  { id: 'pad_crew', label: 'Pad Crew', Icon: Wrench, desc: 'Fuel, arming & maintenance at pads' },
+  { id: 'convoy', label: 'Convoy', Icon: Truck, desc: 'Fuel supply chain & transport' },
+  { id: 'security', label: 'Security', Icon: Shield, desc: 'Perimeter watch & threat reports' },
+  { id: 'pilot', label: 'Pilot', Icon: Plane, desc: 'Flight ops & recovery' },
+  { id: 'hq', label: 'HQ Liaison', Icon: Radio, desc: 'Command authority & intel' },
 ]
 
 // Quick report buttons per role
 const QUICK_REPORTS = {
   pad_crew: [
-    { label: '⛽ Refuel Done', domain: 'FUEL', message: 'Refueling complete.', severity: 'LOW' },
-    { label: '🎯 Armed', domain: 'ARMING', message: 'Arming complete, weapons safe.', severity: 'LOW' },
-    { label: '🔧 Fault Found', domain: 'MAINTENANCE', message: 'Fault detected during inspection.', severity: 'HIGH' },
-    { label: '✅ Inspection OK', domain: 'MAINTENANCE', message: 'Pre-flight inspection complete. Aircraft serviceable.', severity: 'LOW' },
-    { label: '⚠️ Spill', domain: 'FUEL', message: 'Fuel spill at pad. Cleanup required.', severity: 'HIGH' },
-    { label: '🔫 Loadout Swap', domain: 'ARMING', message: 'Loadout reconfiguration in progress.', severity: 'MEDIUM' },
+    { Icon: Droplets, label: 'Refuel Done', domain: 'FUEL', message: 'Refueling complete.', severity: 'LOW' },
+    { Icon: Crosshair, label: 'Armed', domain: 'ARMING', message: 'Arming complete, weapons safe.', severity: 'LOW' },
+    { Icon: Wrench, label: 'Fault Found', domain: 'MAINTENANCE', message: 'Fault detected during inspection.', severity: 'HIGH' },
+    { Icon: CheckCircle2, label: 'Inspection OK', domain: 'MAINTENANCE', message: 'Pre-flight inspection complete. Aircraft serviceable.', severity: 'LOW' },
+    { Icon: AlertTriangle, label: 'Spill', domain: 'FUEL', message: 'Fuel spill at pad. Cleanup required.', severity: 'HIGH' },
+    { Icon: RefreshCw, label: 'Loadout Swap', domain: 'ARMING', message: 'Loadout reconfiguration in progress.', severity: 'MEDIUM' },
   ],
   convoy: [
-    { label: '🚛 ETA Update', domain: 'FUEL', message: 'Convoy en route.', severity: 'MEDIUM' },
-    { label: '🚧 Road Blocked', domain: 'FUEL', message: 'Road blocked. Rerouting.', severity: 'HIGH' },
-    { label: '⚠️ Under Fire', domain: 'FUEL', message: 'Convoy under fire! Requesting support.', severity: 'CRITICAL' },
-    { label: '✅ Delivered', domain: 'FUEL', message: 'Fuel delivery complete.', severity: 'LOW' },
-    { label: '🔧 Truck Down', domain: 'FUEL', message: 'Vehicle breakdown. Need recovery.', severity: 'HIGH' },
+    { Icon: Truck, label: 'ETA Update', domain: 'FUEL', message: 'Convoy en route.', severity: 'MEDIUM' },
+    { Icon: Ban, label: 'Road Blocked', domain: 'FUEL', message: 'Road blocked. Rerouting.', severity: 'HIGH' },
+    { Icon: AlertTriangle, label: 'Under Fire', domain: 'FUEL', message: 'Convoy under fire! Requesting support.', severity: 'CRITICAL' },
+    { Icon: CheckCircle2, label: 'Delivered', domain: 'FUEL', message: 'Fuel delivery complete.', severity: 'LOW' },
+    { Icon: Wrench, label: 'Truck Down', domain: 'FUEL', message: 'Vehicle breakdown. Need recovery.', severity: 'HIGH' },
   ],
   security: [
-    { label: '👁️ Movement', domain: 'THREAT', message: 'Movement spotted on perimeter.', severity: 'HIGH' },
-    { label: '💥 Contact', domain: 'THREAT', message: 'Contact! Hostile activity at perimeter.', severity: 'CRITICAL' },
-    { label: '✅ All Clear', domain: 'THREAT', message: 'Sector clear. No threats observed.', severity: 'LOW' },
-    { label: '🔊 Acoustic', domain: 'THREAT', message: 'Unusual acoustic signature detected.', severity: 'AMBER' },
-    { label: '🛩️ Drone', domain: 'THREAT', message: 'Possible drone activity overhead.', severity: 'HIGH' },
+    { Icon: Eye, label: 'Movement', domain: 'THREAT', message: 'Movement spotted on perimeter.', severity: 'HIGH' },
+    { Icon: Zap, label: 'Contact', domain: 'THREAT', message: 'Contact! Hostile activity at perimeter.', severity: 'CRITICAL' },
+    { Icon: CheckCircle2, label: 'All Clear', domain: 'THREAT', message: 'Sector clear. No threats observed.', severity: 'LOW' },
+    { Icon: Volume2, label: 'Acoustic', domain: 'THREAT', message: 'Unusual acoustic signature detected.', severity: 'AMBER' },
+    { Icon: Target, label: 'Drone', domain: 'THREAT', message: 'Possible drone activity overhead.', severity: 'HIGH' },
   ],
   pilot: [
-    { label: '✈️ Ready', domain: 'SORTIE', message: 'Aircraft ready for taxi.', severity: 'LOW' },
-    { label: '🐦 Bird Strike', domain: 'SORTIE', message: 'Bird strike on approach. Inspecting damage.', severity: 'HIGH' },
-    { label: '🎯 Weapons Exp.', domain: 'SORTIE', message: 'Weapons expended. RTB.', severity: 'MEDIUM' },
-    { label: '⚠️ Emergency', domain: 'SORTIE', message: 'Declaring emergency.', severity: 'CRITICAL' },
-    { label: '🛬 Recovered', domain: 'SORTIE', message: 'Aircraft recovered at pad.', severity: 'LOW' },
+    { Icon: Plane, label: 'Ready', domain: 'SORTIE', message: 'Aircraft ready for taxi.', severity: 'LOW' },
+    { Icon: Feather, label: 'Bird Strike', domain: 'SORTIE', message: 'Bird strike on approach. Inspecting damage.', severity: 'HIGH' },
+    { Icon: Crosshair, label: 'Weapons Exp.', domain: 'SORTIE', message: 'Weapons expended. RTB.', severity: 'MEDIUM' },
+    { Icon: AlertTriangle, label: 'Emergency', domain: 'SORTIE', message: 'Declaring emergency.', severity: 'CRITICAL' },
+    { Icon: PlaneLanding, label: 'Recovered', domain: 'SORTIE', message: 'Aircraft recovered at pad.', severity: 'LOW' },
   ],
   hq: [
-    { label: '📋 Tasking', domain: 'SORTIE', message: 'New tasking order from COMJFAC.', severity: 'HIGH' },
-    { label: '📡 Intel', domain: 'THREAT', message: 'Intelligence update from higher HQ.', severity: 'MEDIUM' },
-    { label: '⚖️ ROE Change', domain: 'SORTIE', message: 'ROE update issued.', severity: 'HIGH' },
-    { label: '🔄 Redirect', domain: 'SORTIE', message: 'Redirect sortie to new tasking.', severity: 'HIGH' },
+    { Icon: ClipboardList, label: 'Tasking', domain: 'SORTIE', message: 'New tasking order from COMJFAC.', severity: 'HIGH' },
+    { Icon: Radio, label: 'Intel', domain: 'THREAT', message: 'Intelligence update from higher HQ.', severity: 'MEDIUM' },
+    { Icon: Scale, label: 'ROE Change', domain: 'SORTIE', message: 'ROE update issued.', severity: 'HIGH' },
+    { Icon: RefreshCw, label: 'Redirect', domain: 'SORTIE', message: 'Redirect sortie to new tasking.', severity: 'HIGH' },
   ],
 }
 
@@ -85,7 +93,10 @@ function RoleSelect({ onSelect }) {
       padding: 20, justifyContent: 'center', gap: 12,
     }}>
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 28, fontWeight: 800 }}>✈ MACS FIELD</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Plane size={26} />
+          <span style={{ fontSize: 28, fontWeight: 800 }}>MACS FIELD</span>
+        </div>
         <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
           Select your role to begin
         </div>
@@ -93,7 +104,7 @@ function RoleSelect({ onSelect }) {
       {ROLES.map(r => (
         <button
           key={r.id}
-          onClick={() => onSelect(r.id, `${r.id.toUpperCase()}-${String(Math.floor(Math.random()*9)+1).padStart(1,'0')}`)}
+          onClick={() => onSelect(r.id, `${r.id.toUpperCase()}-${String(Math.floor(Math.random() * 9) + 1).padStart(1, '0')}`)}
           style={{
             display: 'flex', alignItems: 'center', gap: 14,
             padding: '16px 18px', borderRadius: 10,
@@ -102,7 +113,7 @@ function RoleSelect({ onSelect }) {
             textAlign: 'left', transition: 'background 0.15s',
           }}
         >
-          <span style={{ fontSize: 28 }}>{r.icon}</span>
+          <r.Icon size={28} />
           <div>
             <div style={{ fontWeight: 700 }}>{r.label}</div>
             <div style={{ color: '#6b7280', fontSize: 12 }}>{r.desc}</div>
@@ -118,7 +129,7 @@ function RoleSelect({ onSelect }) {
 function EventCard({ event }) {
   const color = SEVERITY_COLOR[event.severity] || '#6b7280'
   const domainColor = DOMAIN_COLOR[event.domain] || '#64748b'
-  const icon = DOMAIN_ICON[event.domain] || '●'
+  const DomainIcon = DOMAIN_ICONS[event.domain] || Circle
   const ts = new Date(event.timestamp * 1000).toLocaleTimeString()
   const msg = event.payload?.message || event.event_type
   const isDirected = (event.directed_to || []).length > 0
@@ -141,7 +152,7 @@ function EventCard({ event }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span>{icon}</span>
+          <DomainIcon size={14} color={domainColor} />
           {badge && (
             <span style={{
               fontSize: 9, padding: '1px 6px', borderRadius: 4,
@@ -176,21 +187,10 @@ function EventCard({ event }) {
 export default function App() {
   const [selectedRole, setSelectedRole] = useState(null)
   const [token, setToken] = useState(null)
-  const [showCustom, setShowCustom] = useState(false)
-  const [customMsg, setCustomMsg] = useState('')
-  const [customDomain, setCustomDomain] = useState('')
-  const [customSeverity, setCustomSeverity] = useState('MEDIUM')
-  const [reportSent, setReportSent] = useState(false)
-  const feedRef = useRef(null)
 
-  // Generate token on role select
   const handleRoleSelect = (roleId, callsign) => {
-    // In production, tokens would come from an auth server.
-    // For demo, we generate client-side (server also accepts default commander role)
     setSelectedRole(roleId)
-    // Store role info — the WebSocket will use default role until token arrives
-    // For the demo, we pass a simple token-like structure
-    const simpleToken = btoa(JSON.stringify({ role: roleId, callsign, exp: Date.now()/1000 + 86400 }))
+    const simpleToken = btoa(JSON.stringify({ role: roleId, callsign, exp: Date.now() / 1000 + 86400 }))
     setToken(simpleToken)
   }
 
@@ -211,9 +211,7 @@ function FieldDashboard({ role, token }) {
   const [reportFeedback, setReportFeedback] = useState(null)
   const feedRef = useRef(null)
 
-  // Use the passed role since we're using default auth for demo
   const activeRole = role
-  const activeCallsign = `${role.toUpperCase()}-${String(Math.floor(Math.random()*9)+1)}`
 
   // Auto-scroll feed
   useEffect(() => {
@@ -225,7 +223,7 @@ function FieldDashboard({ role, token }) {
   // Flash feedback on report sent
   useEffect(() => {
     if (lastReportId) {
-      setReportFeedback(`✅ Sent ${lastReportId}`)
+      setReportFeedback(lastReportId)
       const t = setTimeout(() => setReportFeedback(null), 3000)
       return () => clearTimeout(t)
     }
@@ -277,7 +275,8 @@ function FieldDashboard({ role, token }) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16, fontWeight: 800 }}>✈ MACS</span>
+            <Plane size={16} />
+            <span style={{ fontSize: 16, fontWeight: 800 }}>MACS</span>
             <span style={{
               fontSize: 10, padding: '2px 8px', borderRadius: 9999,
               background: `${threatColor}22`, color: threatColor,
@@ -289,23 +288,28 @@ function FieldDashboard({ role, token }) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{
+              display: 'flex', alignItems: 'center', gap: 4,
               fontSize: 10, padding: '2px 8px', borderRadius: 9999,
               background: connected ? '#05291622' : '#1c101722',
               color: connected ? '#4ade80' : '#f87171',
               border: `1px solid ${connected ? '#16653444' : '#7f1d1d44'}`,
             }}>
-              {connected ? '● LIVE' : '● OFFLINE'}
+              <Circle size={6} fill="currentColor" strokeWidth={0} />
+              {connected ? 'LIVE' : 'OFFLINE'}
             </span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-          <span style={{ fontSize: 18 }}>{roleInfo?.icon}</span>
+          {roleInfo && <roleInfo.Icon size={16} />}
           <span style={{ fontSize: 12, color: '#9ca3af' }}>
             {roleInfo?.label}
           </span>
           {reportFeedback && (
-            <span style={{ fontSize: 11, color: '#4ade80', marginLeft: 'auto' }}>
-              {reportFeedback}
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              fontSize: 11, color: '#4ade80', marginLeft: 'auto',
+            }}>
+              <CheckCircle2 size={12} /> Sent {reportFeedback}
             </span>
           )}
         </div>
@@ -318,9 +322,11 @@ function FieldDashboard({ role, token }) {
       }}>
         {events.length === 0 ? (
           <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             color: '#4b5563', textAlign: 'center', padding: 40, fontSize: 13,
           }}>
-            {connected ? '✈ Waiting for activity...' : '✈ Connecting...'}
+            <Plane size={16} />
+            {connected ? 'Waiting for activity...' : 'Connecting...'}
           </div>
         ) : (
           events.slice(-50).map(e => <EventCard key={e.id} event={e} />)
@@ -346,7 +352,7 @@ function FieldDashboard({ role, token }) {
               >
                 <option value="">Domain...</option>
                 {['FUEL', 'ARMING', 'MAINTENANCE', 'SORTIE', 'THREAT'].map(d => (
-                  <option key={d} value={d}>{DOMAIN_ICON[d]} {d}</option>
+                  <option key={d} value={d}>{d}</option>
                 ))}
               </select>
               <select
@@ -380,12 +386,12 @@ function FieldDashboard({ role, token }) {
               <button
                 onClick={handleCustomReport}
                 style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: '12px 16px', borderRadius: 6,
                   background: '#3b82f6', border: 'none',
-                  color: 'white', fontWeight: 700, fontSize: 14,
-                  cursor: 'pointer',
+                  color: 'white', cursor: 'pointer',
                 }}
-              >➤</button>
+              ><Send size={18} /></button>
             </div>
             <button
               onClick={() => setShowCustom(false)}
@@ -409,13 +415,16 @@ function FieldDashboard({ role, token }) {
                   key={i}
                   onClick={() => handleQuickReport(qr)}
                   style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', gap: 4,
                     padding: '12px 6px', borderRadius: 8,
                     background: '#111827', border: '1px solid #1f2937',
-                    color: '#e5e7eb', fontSize: 12, fontWeight: 600,
+                    color: '#e5e7eb', fontSize: 11, fontWeight: 600,
                     cursor: 'pointer', transition: 'background 0.15s',
                     lineHeight: 1.3, textAlign: 'center',
                   }}
                 >
+                  <qr.Icon size={18} strokeWidth={1.8} />
                   {qr.label}
                 </button>
               ))}
@@ -423,12 +432,13 @@ function FieldDashboard({ role, token }) {
             <button
               onClick={() => setShowCustom(true)}
               style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 width: '100%', padding: '12px', borderRadius: 8,
                 background: '#1f2937', border: '1px solid #374151',
                 color: '#9ca3af', fontSize: 13, cursor: 'pointer',
               }}
             >
-              💬 Custom Report...
+              <MessageSquare size={14} /> Custom Report...
             </button>
           </>
         )}
