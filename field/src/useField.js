@@ -18,7 +18,20 @@ function _wsUrl() {
   }
   return "ws://localhost:8765";
 }
+
+function _apiUrl() {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (
+    typeof window !== "undefined" &&
+    !window.location.host.startsWith("localhost")
+  ) {
+    return `${window.location.protocol}//${window.location.host}/api`;
+  }
+  return "http://localhost:8080";
+}
+
 const WS_URL = _wsUrl();
+const API_URL = _apiUrl();
 const MAX_EVENTS = 100;
 const RECONNECT_MS = 3000;
 
@@ -153,6 +166,31 @@ export function useField(authInfo) {
     }
   }, []);
 
+  // Control agent (kill/revive) via HTTP API
+  const controlAgent = useCallback(async (action, agentId) => {
+    try {
+      const res = await fetch(`${API_URL}/control`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, agent_id: agentId }),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error("Agent control error:", e);
+      return { ok: false, error: e.message };
+    }
+  }, []);
+
+  // Derive agent status from event stream (AGENT_ONLINE / AGENT_OFFLINE)
+  const agentStatus = useMemo(() => {
+    const status = {};
+    for (const e of events) {
+      if (e.event_type === "AGENT_ONLINE") status[e.source] = "online";
+      else if (e.event_type === "AGENT_OFFLINE") status[e.source] = "offline";
+    }
+    return status;
+  }, [events]);
+
   // Filter: only show events relevant to field — memoized to avoid re-render cascades
   const fieldEvents = useMemo(
     () =>
@@ -163,6 +201,9 @@ export function useField(authInfo) {
         if (e.event_type === "FIELD_REPORT") return true;
         // Show actions (agent outputs)
         if (e.event_type === "ACTION_TAKEN") return true;
+        // Show agent lifecycle (kill/revive visibility)
+        if (e.event_type === "AGENT_ONLINE" || e.event_type === "AGENT_OFFLINE")
+          return true;
         // Show sensor alerts
         if (e.source_layer === "SENSOR" && e.severity !== "INFO") return true;
         // Show scenario events
@@ -182,5 +223,7 @@ export function useField(authInfo) {
     authError,
     lastReportId,
     sendReport,
+    controlAgent,
+    agentStatus,
   };
 }
