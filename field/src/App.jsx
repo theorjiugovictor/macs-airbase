@@ -14,6 +14,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useField } from './useField'
 import { useAlerts } from './useAlerts'
+import { useVoiceAgent } from './useVoiceAgent'
 
 // Stable auth info — avoids re-creating object every render
 function useStableAuth(role, callsign) {
@@ -27,8 +28,8 @@ import {
   Plane, PlaneLanding, Droplets, Crosshair, Wrench, Radar, Globe,
   Truck, Shield, Radio, Eye, Zap, CheckCircle2, AlertTriangle,
   RefreshCw, Ban, Volume2, ClipboardList, Scale, MessageSquare,
-  Send, Circle, Feather, Target, Mic, MicOff, ArrowLeft, X,
-  Filter, List, ChevronDown, Bell, BellOff,
+  Send, Circle, Feather, Target, Mic, ArrowLeft, X,
+  Filter, List, Bell, BellOff,
 } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -118,55 +119,6 @@ const QUICK_REPORTS = {
     { Icon: RefreshCw, label: 'Redirect', domain: 'SORTIE', severity: 'HIGH',
       template: 'Redirect [aircraft/sortie] to [new tasking/area]. Priority: [level]. Reason: [context].', prompt: 'What to redirect, where, why?' },
   ],
-}
-
-// ── Speech-to-Text Hook ──────────────────────────────────────────────────
-
-function useSpeechToText() {
-  const [listening, setListening] = useState(false)
-  const [transcript, setTranscript] = useState('')
-  const [supported, setSupported] = useState(false)
-  const recRef = useRef(null)
-
-  useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (SR) {
-      setSupported(true)
-      const rec = new SR()
-      rec.continuous = true
-      rec.interimResults = true
-      rec.lang = 'en-US'
-      rec.onresult = (e) => {
-        let text = ''
-        for (let i = 0; i < e.results.length; i++) {
-          text += e.results[i][0].transcript
-        }
-        setTranscript(text)
-      }
-      rec.onerror = () => setListening(false)
-      rec.onend = () => setListening(false)
-      recRef.current = rec
-    }
-  }, [])
-
-  const start = useCallback(() => {
-    if (recRef.current && !listening) {
-      setTranscript('')
-      recRef.current.start()
-      setListening(true)
-    }
-  }, [listening])
-
-  const stop = useCallback(() => {
-    if (recRef.current && listening) {
-      recRef.current.stop()
-      setListening(false)
-    }
-  }, [listening])
-
-  const reset = useCallback(() => setTranscript(''), [])
-
-  return { listening, transcript, supported, start, stop, reset }
 }
 
 // ── Role Selection Screen ──────────────────────────────────────────────────
@@ -384,9 +336,24 @@ function FieldDashboard({ role, callsign, onBack }) {
   const feedRef = useRef(null)
   const prevCountRef = useRef(0)
 
-  // ── PTT / Speech-to-text ──
-  const { listening, transcript, supported: sttSupported, start: sttStart, stop: sttStop, reset: sttReset } = useSpeechToText()
-  const [pttDomain, setPttDomain] = useState('')
+  // ── ElevenLabs voice PTT ──
+  const {
+    configured: voiceConfigured,
+    status: voiceStatus,
+    isSpeaking,
+    mode: voiceMode,
+    messages: voiceMessages,
+    tentativeReply,
+    error: voiceError,
+    micMuted,
+    permissionState: voicePermissionState,
+    start: voiceStart,
+    stop: voiceStop,
+    pressToTalk,
+    releaseToTalk,
+  } = useVoiceAgent()
+  const voiceConnected = voiceStatus === 'connected'
+  const recentVoiceMessages = voiceMessages.slice(-2)
 
   // Fire alerts for NEW events (not history replay)
   useEffect(() => {
@@ -410,21 +377,6 @@ function FieldDashboard({ role, callsign, onBack }) {
       return () => clearTimeout(t)
     }
   }, [lastReportId])
-
-  // When PTT stops and we have transcript, send it
-  const handlePttSend = useCallback(() => {
-    sttStop()
-    if (transcript.trim()) {
-      const domain = pttDomain || guessDomain(transcript, role)
-      sendReport({
-        domain,
-        message: transcript.trim(),
-        severity: guessSeverity(transcript),
-        tags: ['voice-report'],
-      })
-      sttReset()
-    }
-  }, [transcript, pttDomain, role, sendReport, sttStop, sttReset])
 
   const quickReports = QUICK_REPORTS[role] || []
 
@@ -576,101 +528,146 @@ function FieldDashboard({ role, callsign, onBack }) {
         background: '#0d1117', padding: '8px 10px',
         paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
       }}>
-        {/* PTT bar (always visible) */}
-        {listening ? (
+        {/* Voice status + transcript */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 8, marginBottom: 8,
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ color: '#e5e7eb', fontSize: 12, fontWeight: 700 }}>
+              BASEOPS VOICE
+            </span>
+            <span style={{ color: '#6b7280', fontSize: 10 }}>
+              {voiceConnected
+                ? (isSpeaking ? 'Agent speaking' : `Session live • ${voiceMode}`)
+                : 'Session offline'}
+            </span>
+          </div>
+          <button
+            onClick={voiceConnected ? voiceStop : voiceStart}
+            disabled={!voiceConfigured && !voiceConnected}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: voiceConnected ? '1px solid #7f1d1d44' : '1px solid #1d4ed844',
+              background: voiceConnected ? '#1c1017' : '#111827',
+              color: voiceConnected ? '#fca5a5' : '#93c5fd',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: (!voiceConfigured && !voiceConnected) ? 'not-allowed' : 'pointer',
+              opacity: (!voiceConfigured && !voiceConnected) ? 0.6 : 1,
+            }}
+          >
+            {voiceConnected ? 'End Session' : 'Start Voice'}
+          </button>
+        </div>
+
+        {(voiceError || voicePermissionState === 'denied' || recentVoiceMessages.length > 0 || tentativeReply) && (
           <div style={{
             display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8,
             padding: '10px 12px', borderRadius: 10,
-            background: '#1c101744', border: '1px solid #ef444444',
+            background: '#111827', border: '1px solid #1f2937',
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Circle size={8} fill="#ef4444" strokeWidth={0} style={{ animation: 'pulse 1s infinite' }} />
-                Listening...
-              </span>
-              {!pttDomain && (
-                <select value={pttDomain} onChange={e => setPttDomain(e.target.value)} style={{
-                  padding: '4px 6px', borderRadius: 4, background: '#111827',
-                  border: '1px solid #1f2937', color: '#e5e7eb', fontSize: 11,
-                }}>
-                  <option value="">Auto-domain</option>
-                  {['FUEL', 'ARMING', 'MAINTENANCE', 'SORTIE', 'THREAT'].map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-            {transcript && (
-              <div style={{ fontSize: 13, color: '#e5e7eb', lineHeight: 1.5, fontStyle: 'italic' }}>
-                "{transcript}"
+            {voicePermissionState === 'denied' && (
+              <div style={{ fontSize: 11, color: '#fca5a5', lineHeight: 1.4 }}>
+                Microphone access is blocked. Allow mic access for this site and reconnect.
               </div>
             )}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={handlePttSend} style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                padding: '12px', borderRadius: 8, background: '#3b82f6', border: 'none',
-                color: 'white', fontWeight: 700, cursor: 'pointer',
-              }}><Send size={14} /> Send</button>
-              <button onClick={() => { sttStop(); sttReset() }} style={{
-                padding: '12px 16px', borderRadius: 8,
-                background: '#1f2937', border: '1px solid #374151',
-                color: '#9ca3af', cursor: 'pointer',
-              }}><X size={16} /></button>
-            </div>
+            {voiceError && (
+              <div style={{ fontSize: 11, color: '#fca5a5', lineHeight: 1.4 }}>
+                {voiceError}
+              </div>
+            )}
+            {recentVoiceMessages.map(message => (
+              <div key={message.id} style={{
+                padding: '8px 10px',
+                borderRadius: 8,
+                background: '#0d1117',
+                borderLeft: `2px solid ${message.role === 'baseops' ? '#3b82f6' : '#6b7280'}`,
+              }}>
+                <div style={{
+                  fontSize: 9,
+                  color: message.role === 'baseops' ? '#93c5fd' : '#9ca3af',
+                  fontWeight: 700,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                  marginBottom: 4,
+                }}>
+                  {message.role === 'baseops' ? 'BASEOPS' : 'YOU'}
+                </div>
+                <div style={{ fontSize: 12, color: '#e5e7eb', lineHeight: 1.45 }}>
+                  {message.text}
+                </div>
+              </div>
+            ))}
+            {tentativeReply && (
+              <div style={{ fontSize: 12, color: '#d1d5db', lineHeight: 1.45, fontStyle: 'italic' }}>
+                {tentativeReply}
+              </div>
+            )}
           </div>
-        ) : null}
+        )}
 
         {/* Quick report grid */}
-        {!listening && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 6, marginBottom: 6,
-          }}>
-            {quickReports.map((qr, i) => (
-              <button
-                key={i}
-                onClick={() => setActiveSheet(qr)}
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  justifyContent: 'center', gap: 4,
-                  padding: '12px 6px', borderRadius: 8,
-                  background: '#111827', border: '1px solid #1f2937',
-                  color: '#e5e7eb', fontSize: 11, fontWeight: 600,
-                  cursor: 'pointer', transition: 'background 0.15s',
-                  lineHeight: 1.3, textAlign: 'center',
-                }}
-              >
-                <qr.Icon size={18} strokeWidth={1.8} />
-                {qr.label}
-              </button>
-            ))}
-          </div>
-        )}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 6, marginBottom: 6,
+        }}>
+          {quickReports.map((qr, i) => (
+            <button
+              key={i}
+              onClick={() => setActiveSheet(qr)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 4,
+                padding: '12px 6px', borderRadius: 8,
+                background: '#111827', border: '1px solid #1f2937',
+                color: '#e5e7eb', fontSize: 11, fontWeight: 600,
+                cursor: 'pointer', transition: 'background 0.15s',
+                lineHeight: 1.3, textAlign: 'center',
+              }}
+            >
+              <qr.Icon size={18} strokeWidth={1.8} />
+              {qr.label}
+            </button>
+          ))}
+        </div>
 
-        {/* PTT mic button — always visible */}
-        {!listening && sttSupported && (
-          <button
-            onTouchStart={e => { e.preventDefault(); sttStart() }}
-            onMouseDown={sttStart}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              width: '100%', padding: '16px',
-              borderRadius: 12, border: '2px solid #374151',
-              background: 'linear-gradient(180deg, #1f2937 0%, #111827 100%)',
-              color: '#e5e7eb', fontSize: 15, fontWeight: 700,
-              cursor: 'pointer', userSelect: 'none',
-              transition: 'all 0.15s',
-            }}
-          >
-            <Mic size={20} /> Hold to Talk
-          </button>
-        )}
-
-        {/* Fallback for no STT: text input */}
-        {!listening && !sttSupported && (
-          <TextReportBar sendReport={sendReport} role={role} />
-        )}
+        {/* ElevenLabs PTT button */}
+        <button
+          onMouseDown={pressToTalk}
+          onMouseUp={releaseToTalk}
+          onMouseLeave={releaseToTalk}
+          onTouchStart={(event) => {
+            event.preventDefault()
+            pressToTalk()
+          }}
+          onTouchEnd={(event) => {
+            event.preventDefault()
+            releaseToTalk()
+          }}
+          onTouchCancel={releaseToTalk}
+          disabled={!voiceConnected}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            width: '100%', padding: '16px',
+            borderRadius: 12,
+            border: `2px solid ${!voiceConnected ? '#374151' : micMuted ? '#1d4ed8' : '#ef4444'}`,
+            background: !voiceConnected
+              ? '#111827'
+              : micMuted
+                ? 'linear-gradient(180deg, #1f2937 0%, #111827 100%)'
+                : 'linear-gradient(180deg, #450a0a 0%, #111827 100%)',
+            color: '#e5e7eb', fontSize: 15, fontWeight: 700,
+            cursor: voiceConnected ? 'pointer' : 'not-allowed',
+            userSelect: 'none',
+            transition: 'all 0.15s',
+            opacity: voiceConnected ? 1 : 0.7,
+          }}
+        >
+          <Mic size={20} /> {!voiceConnected ? 'Start Voice Session First' : (micMuted ? 'Hold To Talk' : 'Release To Transmit')}
+        </button>
       </div>
 
       {/* Quick report edit sheet overlay */}
@@ -679,79 +676,4 @@ function FieldDashboard({ role, callsign, onBack }) {
       )}
     </div>
   )
-}
-
-
-// ── Text report bar (fallback when STT is unavailable) ───────────────────
-
-function TextReportBar({ sendReport, role }) {
-  const [text, setText] = useState('')
-  const [domain, setDomain] = useState('')
-
-  const handleSend = () => {
-    if (!text.trim()) return
-    sendReport({
-      domain: domain || guessDomain(text, role),
-      message: text.trim(),
-      severity: guessSeverity(text),
-      tags: ['text-report'],
-    })
-    setText('')
-  }
-
-  return (
-    <div style={{ display: 'flex', gap: 6 }}>
-      <select value={domain} onChange={e => setDomain(e.target.value)} style={{
-        width: 80, padding: '12px 6px', borderRadius: 8,
-        background: '#111827', border: '1px solid #1f2937',
-        color: '#e5e7eb', fontSize: 11,
-      }}>
-        <option value="">Auto</option>
-        {['FUEL', 'ARMING', 'MAINTENANCE', 'SORTIE', 'THREAT'].map(d => (
-          <option key={d} value={d}>{d}</option>
-        ))}
-      </select>
-      <input
-        type="text" placeholder="Type report..."
-        value={text} onChange={e => setText(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && handleSend()}
-        style={{
-          flex: 1, padding: '12px 10px', borderRadius: 8,
-          background: '#111827', border: '1px solid #1f2937',
-          color: '#e5e7eb', fontSize: 14, outline: 'none',
-        }}
-      />
-      <button onClick={handleSend} style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '12px 16px', borderRadius: 8,
-        background: '#3b82f6', border: 'none', color: 'white', cursor: 'pointer',
-      }}><Send size={18} /></button>
-    </div>
-  )
-}
-
-
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-function guessDomain(text, role) {
-  const t = text.toLowerCase()
-  if (t.match(/fuel|truck|convoy|jp-8|tanker|spill|delivery/)) return 'FUEL'
-  if (t.match(/arm|weapon|ordnance|loadout|amraam|iris|bomb|munition/)) return 'ARMING'
-  if (t.match(/maint|fault|inspect|repair|ground|hydraulic|engine/)) return 'MAINTENANCE'
-  if (t.match(/threat|hostile|contact|radar|drone|movement|perimeter|sector/)) return 'THREAT'
-  if (t.match(/sortie|scramble|taxi|takeoff|landing|aircraft|pilot|ready/)) return 'SORTIE'
-  // Default by role
-  const roleDefaults = {
-    pad_crew: 'MAINTENANCE', convoy: 'FUEL', security: 'THREAT',
-    pilot: 'SORTIE', hq: 'SORTIE',
-  }
-  return roleDefaults[role] || 'SYSTEM'
-}
-
-function guessSeverity(text) {
-  const t = text.toLowerCase()
-  if (t.match(/mayday|emergency|under fire|critical|hostile|contact!/)) return 'CRITICAL'
-  if (t.match(/fault|blocked|down|spill|strike|urgent/)) return 'HIGH'
-  if (t.match(/update|en route|eta|reconfig/)) return 'MEDIUM'
-  return 'LOW'
 }
