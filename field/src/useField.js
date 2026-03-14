@@ -32,6 +32,10 @@ export function useField(authInfo) {
   const wsRef = useRef(null);
   const reconnectRef = useRef(null);
 
+  // Store authInfo in a ref so connect() never depends on it
+  const authRef = useRef(authInfo);
+  authRef.current = authInfo;
+
   const pendingRef = useRef([]);
   const flushTimerRef = useRef(null);
 
@@ -63,13 +67,14 @@ export function useField(authInfo) {
     ws.onopen = () => {
       setConnected(true);
       setAuthError(null);
-      // Authenticate with role + callsign
-      if (authInfo?.role) {
+      // Authenticate with role + callsign (read from ref, not closure)
+      const auth = authRef.current;
+      if (auth?.role) {
         ws.send(
           JSON.stringify({
             type: "auth",
-            role: authInfo.role,
-            callsign: authInfo.callsign || "FIELD",
+            role: auth.role,
+            callsign: auth.callsign || "FIELD",
           }),
         );
       }
@@ -125,7 +130,7 @@ export function useField(authInfo) {
     };
 
     ws.onerror = () => ws.close();
-  }, [authInfo]);
+  }, []); // stable — reads authInfo from ref
 
   useEffect(() => {
     connect();

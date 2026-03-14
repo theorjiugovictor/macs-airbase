@@ -6,6 +6,16 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useField } from './useField'
 import { useAlerts } from './useAlerts'
+
+// Stable auth info — avoids re-creating object every render (prevents WS reconnect loop)
+function useStableAuth(role, callsign) {
+  const ref = useRef({ role, callsign })
+  if (ref.current.role !== role || ref.current.callsign !== callsign) {
+    ref.current = { role, callsign }
+  }
+  return ref.current
+}
+
 import {
   PaperAirplaneIcon,
   BeakerIcon,
@@ -31,6 +41,8 @@ import {
   ExclamationCircleIcon,
   CursorArrowRaysIcon,
   ArrowRightEndOnRectangleIcon,
+  BellIcon,
+  BellSlashIcon,
 } from '@heroicons/react/24/solid'
 
 // ── Design tokens ───────────────────────────────────────────────────────────
@@ -199,7 +211,7 @@ function StatusDot({ color, pulse }) {
 function RoleSelect({ onSelect }) {
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', height: '100vh',
+      display: 'flex', flexDirection: 'column', height: '100dvh',
       padding: '20px 16px', justifyContent: 'center', gap: 8,
       background: C.surfacePrimary,
     }}>
@@ -421,7 +433,9 @@ export default function App() {
 // ── Field Dashboard ───────────────────────────────────────────────────────────
 
 function FieldDashboard({ role, callsign, onBack }) {
-  const { events, connected, sendReport, lastReportId } = useField({ role, callsign })
+  const authInfo = useStableAuth(role, callsign)
+  const { events, connected, sendReport, lastReportId } = useField(authInfo)
+  const { notify } = useAlerts()
   const [activeSheet, setActiveSheet] = useState(null)
   const [feedMode, setFeedMode] = useState('smart')
   const [reportFeedback, setReportFeedback] = useState(null)
@@ -431,6 +445,14 @@ function FieldDashboard({ role, callsign, onBack }) {
 
   const { listening, transcript, supported: sttSupported, start: sttStart, stop: sttStop, reset: sttReset } = useSpeechToText()
   const [pttDomain, setPttDomain] = useState('')
+
+  // Fire alerts for NEW events (not history replay)
+  useEffect(() => {
+    if (muted) { prevCountRef.current = events.length; return }
+    const newEvents = events.slice(prevCountRef.current)
+    prevCountRef.current = events.length
+    newEvents.forEach(e => notify(e))
+  }, [events, muted, notify])
 
   useEffect(() => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight
@@ -490,7 +512,7 @@ function FieldDashboard({ role, callsign, onBack }) {
   })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: C.surfacePrimary }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden', background: C.surfacePrimary }}>
 
       {/* Header */}
       <header style={{
@@ -515,6 +537,15 @@ function FieldDashboard({ role, callsign, onBack }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <button onClick={() => setMuted(m => !m)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+              color: muted ? C.red : C.green,
+            }} title={muted ? 'Alerts muted' : 'Alerts on'}>
+              {muted
+                ? <BellSlashIcon style={{ width: 14, height: 14 }} />
+                : <BellIcon style={{ width: 14, height: 14 }} />}
+            </button>
             {reportFeedback && (
               <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9,
                 color: C.green, letterSpacing: '0.1em' }}>
