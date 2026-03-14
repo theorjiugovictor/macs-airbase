@@ -101,7 +101,7 @@ export function useField(authInfo) {
     }
 
     ws.onerror = () => ws.close()
-  }, [token])
+  }, [authInfo])
 
   useEffect(() => {
     connect()

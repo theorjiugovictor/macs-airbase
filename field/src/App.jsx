@@ -13,12 +13,13 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useField } from './useField'
+import { useAlerts } from './useAlerts'
 import {
   Plane, PlaneLanding, Droplets, Crosshair, Wrench, Radar, Globe,
   Truck, Shield, Radio, Eye, Zap, CheckCircle2, AlertTriangle,
   RefreshCw, Ban, Volume2, ClipboardList, Scale, MessageSquare,
   Send, Circle, Feather, Target, Mic, MicOff, ArrowLeft, X,
-  Filter, List, ChevronDown,
+  Filter, List, ChevronDown, Bell, BellOff,
 } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -365,14 +366,26 @@ export default function App() {
 
 function FieldDashboard({ role, callsign, onBack }) {
   const { events, connected, sendReport, lastReportId } = useField({ role, callsign })
+  const { notify, permissionState } = useAlerts()
   const [activeSheet, setActiveSheet] = useState(null)     // quick report sheet
   const [feedMode, setFeedMode] = useState('smart')        // 'smart' | 'all'
   const [reportFeedback, setReportFeedback] = useState(null)
+  const [muted, setMuted] = useState(false)
   const feedRef = useRef(null)
+  const prevCountRef = useRef(0)
 
   // ── PTT / Speech-to-text ──
   const { listening, transcript, supported: sttSupported, start: sttStart, stop: sttStop, reset: sttReset } = useSpeechToText()
   const [pttDomain, setPttDomain] = useState('')
+
+  // Fire alerts for NEW events (not history replay)
+  useEffect(() => {
+    if (muted) { prevCountRef.current = events.length; return }
+    // Only alert on events added since last render
+    const newEvents = events.slice(prevCountRef.current)
+    prevCountRef.current = events.length
+    newEvents.forEach(e => notify(e))
+  }, [events, muted, notify])
 
   // Auto-scroll feed
   useEffect(() => {
@@ -468,6 +481,13 @@ function FieldDashboard({ role, callsign, onBack }) {
             }}>{threatLevel}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={() => setMuted(m => !m)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+              color: muted ? '#f87171' : '#4ade80',
+            }} title={muted ? 'Alerts muted' : 'Alerts on'}>
+              {muted ? <BellOff size={16} /> : <Bell size={16} />}
+            </button>
             <span style={{
               display: 'flex', alignItems: 'center', gap: 4,
               fontSize: 10, padding: '2px 8px', borderRadius: 9999,
