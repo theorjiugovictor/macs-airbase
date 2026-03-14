@@ -343,19 +343,26 @@ function EventCard({ event, compact }) {
   if (compact) {
     return (
       <div style={{
-        padding: '6px 10px',
-        background: C.card,
+        padding: '9px 10px',
+        background: isCritical ? `${C.red}08` : C.card,
         borderLeft: `2px solid ${sevColor}`,
         borderBottom: `1px solid ${C.border}`,
-        display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden',
       }}>
-        <DomainIcon style={{ width: 11, height: 11, color: C.cyan, flexShrink: 0 }} />
-        <span style={{ fontSize: 9, color: 'var(--text-dim)', flexShrink: 0 }}>{event.source}</span>
-        <span style={{
-          fontSize: 9, color: 'var(--text-muted)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{msg}</span>
-        <span style={{ fontSize: 9, color: 'var(--text-dim)', marginLeft: 'auto', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{ts}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+          <DomainIcon style={{ width: 11, height: 11, color: C.cyan, flexShrink: 0 }} />
+          <Badge text={event.severity} color={sevColor} />
+          {isDirected && <Badge text="FOR YOU" color={C.amber} />}
+          <span style={{
+            fontSize: 9, color: 'var(--text-dim)',
+            marginLeft: 'auto', flexShrink: 0, fontVariantNumeric: 'tabular-nums',
+          }}>{ts}</span>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-primary)', lineHeight: 1.5 }}>{msg}</div>
+        {(isFieldReport && event.payload?.reporter_callsign) && (
+          <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 3 }}>
+            — {event.payload.reporter_callsign} / {event.payload.reporter_role}
+          </div>
+        )}
       </div>
     )
   }
