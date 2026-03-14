@@ -15,6 +15,7 @@ from aiohttp import web
 from aiohttp.web import middleware
 
 from shared_state import bulletin
+from mission_board import mission_board
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,47 @@ async def get_health(request):
     })
 
 
+async def get_missions(request):
+    include_all = request.query.get("all", "").lower() in ("true", "1")
+    missions = mission_board.all_missions() if include_all else mission_board.snapshot()
+    return web.json_response({"missions": missions})
+
+
+async def post_missions(request):
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
+
+    action = data.get("action", "")
+
+    if action == "create":
+        name = data.get("name", "").strip()
+        if not name:
+            return web.json_response({"ok": False, "error": "Mission name required"}, status=400)
+        mission = mission_board.create(
+            name=name,
+            description=data.get("description", ""),
+            domain=data.get("domain"),
+            priority=data.get("priority", "HIGH"),
+            duration_min=float(data.get("duration_min", 60)),
+            created_by=data.get("created_by", "API"),
+            parameters=data.get("parameters", {}),
+        )
+        from dataclasses import asdict
+        return web.json_response({"ok": True, "mission": asdict(mission)})
+
+    elif action == "cancel":
+        mid = data.get("mission_id", "")
+        mission = mission_board.cancel(mid, cancelled_by=data.get("cancelled_by", "API"))
+        if not mission:
+            return web.json_response({"ok": False, "error": f"Mission '{mid}' not found"}, status=404)
+        from dataclasses import asdict
+        return web.json_response({"ok": True, "mission": asdict(mission)})
+
+    return web.json_response({"ok": False, "error": f"Unknown action: {action}"}, status=400)
+
+
 def start_http_api(agent_map, world_state_mgr, port=8080):
     global _agent_map, _world_state_mgr
     _agent_map = agent_map
@@ -143,6 +185,8 @@ def start_http_api(agent_map, world_state_mgr, port=8080):
     app.router.add_get("/events", get_events)
     app.router.add_post("/control", post_control)
     app.router.add_get("/health", get_health)
+    app.router.add_get("/missions", get_missions)
+    app.router.add_post("/missions", post_missions)
 
     runner = web.AppRunner(app)
 

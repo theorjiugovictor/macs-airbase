@@ -23,7 +23,8 @@ from dataclasses import asdict
 import websockets
 
 from shared_state import bulletin
-from auth import verify_token, filter_event_for_role, can_report_domain, VALID_ROLES
+from auth import verify_token, filter_event_for_role, can_report_domain, VALID_ROLES, MISSION_CONTROL_ROLES
+from mission_board import mission_board
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,97 @@ async def _handle_voice_event(session: ClientSession, data: dict):
     }))
 
 
+async def _handle_mission(session: ClientSession, data: dict):
+    """Handle MISSION messages — create, update, cancel missions."""
+    if session.role not in MISSION_CONTROL_ROLES:
+        await session.ws.send(json.dumps({
+            "type": "mission_error",
+            "error": f"Role '{session.role}' cannot manage missions",
+        }))
+        return
+
+    action = data.get("action", "")
+
+    if action == "create":
+        name = data.get("name", "").strip()
+        description = data.get("description", "").strip()
+        domain = data.get("domain", "SORTIE").upper()
+        priority = data.get("priority", "HIGH").upper()
+        duration_min = float(data.get("duration_min", 60))
+        parameters = data.get("parameters", {})
+
+        if not name:
+            await session.ws.send(json.dumps({
+                "type": "mission_error",
+                "error": "Mission name is required",
+            }))
+            return
+
+        mission = mission_board.create(
+            name=name, description=description, domain=domain,
+            priority=priority, duration_min=duration_min,
+            created_by=session.callsign, parameters=parameters,
+        )
+        await session.ws.send(json.dumps({
+            "type": "mission_ok",
+            "action": "created",
+            "mission": {"id": mission.id, "name": mission.name},
+        }))
+
+    elif action == "update":
+        mission_id = data.get("mission_id", "")
+        updates = {}
+        for key in ("name", "description", "domain", "priority",
+                     "duration_min", "parameters"):
+            if key in data:
+                updates[key] = data[key]
+
+        mission = mission_board.update(mission_id, updated_by=session.callsign, **updates)
+        if not mission:
+            await session.ws.send(json.dumps({
+                "type": "mission_error",
+                "error": f"Mission '{mission_id}' not found or not active",
+            }))
+            return
+
+        await session.ws.send(json.dumps({
+            "type": "mission_ok",
+            "action": "updated",
+            "mission": {"id": mission.id, "name": mission.name},
+        }))
+
+    elif action == "cancel":
+        mission_id = data.get("mission_id", "")
+        reason = data.get("reason", "")
+
+        mission = mission_board.cancel(mission_id, cancelled_by=session.callsign, reason=reason)
+        if not mission:
+            await session.ws.send(json.dumps({
+                "type": "mission_error",
+                "error": f"Mission '{mission_id}' not found or not active",
+            }))
+            return
+
+        await session.ws.send(json.dumps({
+            "type": "mission_ok",
+            "action": "cancelled",
+            "mission": {"id": mission.id, "name": mission.name},
+        }))
+
+    elif action == "list":
+        missions = mission_board.snapshot()
+        await session.ws.send(json.dumps({
+            "type": "missions",
+            "missions": missions,
+        }))
+
+    else:
+        await session.ws.send(json.dumps({
+            "type": "mission_error",
+            "error": f"Unknown mission action: {action}. Use create/update/cancel/list",
+        }))
+
+
 # ── Connection handler ───────────────────────────────────────────────────────
 
 async def _handler(websocket):
@@ -224,6 +316,11 @@ async def _handler(websocket):
         history = bulletin.snapshot(max_events=200)
         filtered = [e for e in history if filter_event_for_role(e, session.role)]
         await websocket.send(json.dumps({"type": "history", "events": filtered}))
+
+        # Send active missions on connect
+        active_missions = mission_board.snapshot()
+        if active_missions:
+            await websocket.send(json.dumps({"type": "missions", "missions": active_missions}))
 
         # Listen for inbound messages
         async for raw in websocket:
@@ -243,6 +340,9 @@ async def _handler(websocket):
 
                 elif msg_type == "voice_event":
                     await _handle_voice_event(session, data)
+
+                elif msg_type == "mission":
+                    await _handle_mission(session, data)
 
                 elif msg_type == "ping":
                     await websocket.send(json.dumps({"type": "pong", "ts": time.time()}))

@@ -31,6 +31,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "")  # Empty = auth disabled
 # Role definitions: which domains each role can see
 ROLE_FILTERS = {
     "commander": None,         # None = sees everything
+    "mission_control": None,  # sees everything — creates/manages missions
     "pad_crew":  {"FUEL", "ARMING", "MAINTENANCE", "SORTIE", "SYSTEM", "THREAT"},
     "convoy":    {"FUEL", "SYSTEM", "THREAT"},
     "security":  {"THREAT", "SYSTEM"},
@@ -41,6 +42,7 @@ ROLE_FILTERS = {
 # Role definitions: which domains each role can report into
 ROLE_REPORT_DOMAINS = {
     "commander": {"SORTIE", "FUEL", "ARMING", "MAINTENANCE", "THREAT", "SYSTEM"},
+    "mission_control": {"SORTIE", "FUEL", "ARMING", "MAINTENANCE", "THREAT", "SYSTEM"},
     "pad_crew":  {"FUEL", "ARMING", "MAINTENANCE"},
     "convoy":    {"FUEL"},
     "security":  {"THREAT"},
@@ -49,6 +51,9 @@ ROLE_REPORT_DOMAINS = {
 }
 
 VALID_ROLES = set(ROLE_FILTERS.keys())
+
+# Roles that can create / manage missions
+MISSION_CONTROL_ROLES = {"mission_control", "hq", "commander"}
 
 
 def _b64encode(data: bytes) -> str:

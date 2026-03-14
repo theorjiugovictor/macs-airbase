@@ -367,6 +367,7 @@ class SAU(ABC):
                 or e.event_type == "FIELD_REPORT"   # human intelligence
                 or e.event_type == "AGENT_OFFLINE"
                 or e.event_type == "ACTION_TAKEN"
+                or e.source == "MISSION_CONTROL"   # standing orders
             )
         ]
 
@@ -377,6 +378,14 @@ class SAU(ABC):
         agent_status = bulletin.agent_status()
         domain_activity = bulletin.domain_last_active()
         now = time.time()
+
+        # Active missions from mission board
+        try:
+            from mission_board import mission_board
+            active_missions = mission_board.snapshot()
+        except Exception:
+            active_missions = []
+
         return json.dumps({
             "agent_id": self.agent_id,
             "domain": self.domain,
@@ -385,6 +394,7 @@ class SAU(ABC):
             "seconds_since_last_action": {
                 k: round(now - v) for k, v in domain_activity.items()
             },
+            "active_missions": active_missions,
             "recent_events": snapshot,
         }, indent=2)
 
@@ -426,6 +436,25 @@ class SAU(ABC):
         )
 
         actions_block = "\n".join(other_actions) if other_actions else "  (none yet)"
+
+        # Active missions section
+        missions_block = ""
+        try:
+            from mission_board import mission_board
+            active = mission_board.get_active()
+            if active:
+                lines = ["ACTIVE MISSIONS (standing orders \u2014 factor these into EVERY decision):"]
+                now = time.time()
+                for m in active:
+                    remaining = ""
+                    if m.duration_min:
+                        left = max(0, m.duration_min - (now - m.start_time) / 60)
+                        remaining = f" [{int(left)}min remaining]"
+                    lines.append(f"  \u2022 [{m.priority}] {m.name}: {m.description} (domain: {m.domain or 'ALL'}){remaining}")
+                missions_block = "\n".join(lines) + "\n\n"
+        except Exception:
+            pass
+
         team_section = (
             "TEAM STATUS:\n"
             "  Units online: " + (", ".join(online) if online else "none visible") + "\n"
@@ -438,7 +467,7 @@ class SAU(ABC):
         return f"""Current situation (shared bulletin board state):
 {context}
 
-{team_section}
+{missions_block}{team_section}
 
 New events since last tick:
 {relevant_summary}

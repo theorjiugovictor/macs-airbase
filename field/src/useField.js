@@ -30,6 +30,7 @@ export function useField(authInfo) {
   const [callsign, setCallsign] = useState(null);
   const [authError, setAuthError] = useState(null);
   const [lastReportId, setLastReportId] = useState(null);
+  const [missions, setMissions] = useState([]);
   const wsRef = useRef(null);
   const reconnectRef = useRef(null);
 
@@ -108,6 +109,15 @@ export function useField(authInfo) {
           return;
         }
 
+        if (data.type === "missions") {
+          setMissions(data.missions || []);
+          return;
+        }
+
+        if (data.type === "mission_ok" || data.type === "mission_error") {
+          return;
+        }
+
         if (data.type === "pong" || data.type === "error") return;
 
         // History replay
@@ -168,6 +178,35 @@ export function useField(authInfo) {
     return false;
   }, []);
 
+  const sendMission = useCallback((missionData) => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: "mission",
+          ...missionData,
+        }),
+      );
+    }
+  }, []);
+
+  // Update missions from live mission events
+  useEffect(() => {
+    const missionEvents = events.filter(
+      (e) => e.source === "MISSION_CONTROL" && e.payload?.mission,
+    );
+    if (missionEvents.length === 0) return;
+    setMissions((prev) => {
+      const map = {};
+      prev.forEach((m) => (map[m.id] = m));
+      missionEvents.forEach((e) => {
+        const m = e.payload.mission;
+        map[m.id] = m;
+      });
+      return Object.values(map).filter((m) => m.status === "active");
+    });
+  }, [events]);
+
   // Filter: only show events relevant to field — memoized to avoid re-render cascades
   const fieldEvents = useMemo(
     () =>
@@ -186,6 +225,8 @@ export function useField(authInfo) {
           return true;
         // Show sensor alerts
         if (e.source_layer === "SENSOR" && e.severity !== "INFO") return true;
+        // Show mission lifecycle events
+        if (e.source === "MISSION_CONTROL") return true;
         // Show scenario events
         if (e.source === "SYSTEM" && e.event_type !== "WORLD_STATE_UPDATE")
           return true;
@@ -204,5 +245,7 @@ export function useField(authInfo) {
     lastReportId,
     sendReport,
     sendVoiceEvent,
+    missions,
+    sendMission,
   };
 }

@@ -14,7 +14,7 @@
 5. [Agent IDs & Domains](#5-agent-ids--domains)
 6. [World State Object](#6-world-state-object)
 7. [Deriving UI State](#7-deriving-ui-state-from-events)
-8. [HTTP API (REST)](#8-http-api-rest)
+8. [HTTP API (REST)](#8-http-api-rest) — includes **Missions API** (§8g–8i)
 9. [Scenarios](#9-scenarios)
 10. [Reference Implementation (React)](#10-reference-implementation-react)
 11. [TypeScript Types](#11-typescript-types)
@@ -598,6 +598,142 @@ interface HealthResponse {
   agents_alive: number
   agents_total: number
   events: number
+}
+```
+
+### 8g. GET /api/missions — List Missions
+
+```bash
+GET https://macs-airbase.duckdns.org/api/missions          # active only
+GET https://macs-airbase.duckdns.org/api/missions?all=true  # include expired/cancelled
+```
+
+**Response:**
+
+```json
+{
+  "missions": [
+    {
+      "id": "m_1719000000_001",
+      "name": "Surge Sortie Alpha",
+      "description": "Prioritize all available pads for rapid turnaround.",
+      "status": "active",
+      "domain": "SORTIE",
+      "priority": "HIGH",
+      "start_time": 1719000000.0,
+      "duration_min": 30,
+      "created_by": "MISSION_CONTROL-42",
+      "parameters": {}
+    }
+  ]
+}
+```
+
+### 8h. POST /api/missions — Create / Cancel Mission
+
+```bash
+POST https://macs-airbase.duckdns.org/api/missions
+Content-Type: application/json
+```
+
+**Create:**
+
+```json
+{
+  "action": "create",
+  "name": "Surge Sortie Alpha",
+  "description": "Prioritize all available pads for rapid turnaround.",
+  "domain": "SORTIE",
+  "priority": "HIGH",
+  "duration_min": 30
+}
+```
+
+**Cancel:**
+
+```json
+{
+  "action": "cancel",
+  "mission_id": "m_1719000000_001"
+}
+```
+
+**Response:**
+
+```json
+{ "ok": true, "mission": { ... } }
+```
+
+### 8i. WebSocket — Mission Messages
+
+Missions can also be managed via WebSocket (requires `mission_control`, `hq`, or `commander` role auth).
+
+**Client → Server:**
+
+```json
+{ "type": "mission", "action": "create", "name": "...", "description": "...", "domain": "SORTIE", "priority": "HIGH", "duration_min": 30 }
+```
+
+```json
+{ "type": "mission", "action": "cancel", "mission_id": "m_1719000000_001" }
+```
+
+```json
+{ "type": "mission", "action": "list" }
+```
+
+**Server → Client (on connect + on change):**
+
+```json
+{ "type": "missions", "missions": [ { "id": "...", "name": "...", "status": "active", ... } ] }
+```
+
+**Server → Client (confirmation):**
+
+```json
+{ "type": "mission_ok", "action": "created", "mission": { "id": "...", "name": "..." } }
+```
+
+```json
+{ "type": "mission_error", "error": "Mission name is required" }
+```
+
+### TypeScript — Mission API Types
+
+```typescript
+interface Mission {
+  id: string
+  name: string
+  description: string
+  status: 'active' | 'expired' | 'cancelled'
+  domain: string | null
+  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM'
+  start_time: number
+  duration_min: number | null
+  created_by: string
+  parameters: Record<string, any>
+}
+
+type MissionAction =
+  | { action: 'create'; name: string; description?: string; domain?: string; priority?: string; duration_min?: number }
+  | { action: 'update'; mission_id: string; description?: string; priority?: string; duration_min?: number }
+  | { action: 'cancel'; mission_id: string }
+  | { action: 'list' }
+
+interface MissionsMessage {
+  type: 'missions'
+  missions: Mission[]
+}
+
+interface MissionOk {
+  type: 'mission_ok'
+  action: string
+  mission: { id: string; name: string }
+}
+
+interface MissionError {
+  type: 'mission_error'
+  error: string
 }
 ```
 

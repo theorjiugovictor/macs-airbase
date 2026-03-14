@@ -247,6 +247,10 @@ def main():
     runner = ScenarioRunner(args.scenario)
     runner.start()
 
+    # Start mission board (auto-expiry of timed missions)
+    from mission_board import mission_board
+    mission_board.start()
+
     # Start sensor simulator
     sensor_sim = SensorSimulator(args.scenario)
     sensor_sim.start()
@@ -271,6 +275,7 @@ def main():
     finally:
         runner.stop()
         sensor_sim.stop()
+        mission_board.stop()
         for agent in swarm:
             agent.stop()
         print(f"\n{BOLD}MACS Airbase stopped.{RESET}")

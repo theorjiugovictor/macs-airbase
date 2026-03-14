@@ -3,7 +3,7 @@
  * Design: Military tactical HUD. JetBrains Mono. Heroicons only.
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useField } from './useField'
 import { useAlerts } from './useAlerts'
 import { useVoiceAgent } from './useVoiceAgent'
@@ -44,6 +44,9 @@ import {
   ArrowRightEndOnRectangleIcon,
   BellIcon,
   BellSlashIcon,
+  PlusIcon,
+  MapPinIcon,
+  ClockIcon,
 } from '@heroicons/react/24/solid'
 
 // ── Design tokens ───────────────────────────────────────────────────────────
@@ -85,6 +88,7 @@ const DOMAIN_ICONS = {
 }
 
 const ROLES = [
+  { id: 'mission_control', label: 'Mission Control', Icon: ClipboardDocumentListIcon, desc: 'Create & manage active missions' },
   { id: 'pad_crew',  label: 'Pad Crew',   Icon: WrenchScrewdriverIcon, desc: 'Fuel, arming & maintenance at pads' },
   { id: 'convoy',    label: 'Convoy',      Icon: TruckIcon,             desc: 'Fuel supply chain & transport' },
   { id: 'security',  label: 'Security',    Icon: ShieldCheckIcon,       desc: 'Perimeter watch & threat reports' },
@@ -422,14 +426,47 @@ export default function App() {
   }
 
   if (!selectedRole) return <RoleSelect onSelect={handleSelect} />
+  if (selectedRole === 'mission_control') {
+    return <MissionControlDashboard role={selectedRole} callsign={callsign} onBack={() => setSelectedRole(null)} />
+  }
   return <FieldDashboard role={selectedRole} callsign={callsign} onBack={() => setSelectedRole(null)} />
+}
+
+// ── Mission Control Dashboard (wrapper) ──────────────────────────────────────
+
+function MissionControlDashboard({ role, callsign, onBack }) {
+  const authInfo = useStableAuth(role, callsign)
+  const { events, connected, missions, sendMission } = useField(authInfo)
+  const { notify } = useAlerts()
+  const [muted, setMuted] = useState(false)
+  const prevCountRef = useRef(0)
+
+  useEffect(() => {
+    if (muted) { prevCountRef.current = events.length; return }
+    const newEvents = events.slice(prevCountRef.current)
+    prevCountRef.current = events.length
+    newEvents.forEach(e => notify(e))
+  }, [events, muted, notify])
+
+  return (
+    <MissionControlPage
+      missions={missions}
+      sendMission={sendMission}
+      events={events}
+      connected={connected}
+      callsign={callsign}
+      onBack={onBack}
+      muted={muted}
+      setMuted={setMuted}
+    />
+  )
 }
 
 // ── Field Dashboard ───────────────────────────────────────────────────────────
 
 function FieldDashboard({ role, callsign, onBack }) {
   const authInfo = useStableAuth(role, callsign)
-  const { events, connected, sendReport, sendVoiceEvent, lastReportId } = useField(authInfo)
+  const { events, connected, sendReport, sendVoiceEvent, lastReportId, missions, sendMission } = useField(authInfo)
   const { notify } = useAlerts()
   const [activeSheet, setActiveSheet] = useState(null)
   const [feedMode, setFeedMode] = useState('smart')
@@ -641,6 +678,9 @@ function FieldDashboard({ role, callsign, onBack }) {
         </button>
       </div>
 
+      {/* Pinned missions banner */}
+      <MissionBanner missions={missions} />
+
       {/* Event Feed */}
       <div ref={feedRef} style={{
         flex: 1, overflowY: 'auto', padding: feedMode === 'all' ? 0 : '6px 8px',
@@ -807,6 +847,369 @@ function FieldDashboard({ role, callsign, onBack }) {
       {activeSheet && (
         <ReportSheet qr={activeSheet} onSend={sendReport} onClose={() => setActiveSheet(null)} />
       )}
+    </div>
+  )
+}
+
+// ── Pinned Missions Banner ────────────────────────────────────────────────────
+
+function MissionBanner({ missions }) {
+  const active = (missions || []).filter(m => m.status === 'active')
+  if (active.length === 0) return null
+
+  return (
+    <div style={{
+      padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4,
+      background: `${C.accent}08`, borderBottom: `1px solid ${C.accent}22`, flexShrink: 0,
+    }}>
+      <div style={{
+        fontSize: 8, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase',
+        color: C.accent, display: 'flex', alignItems: 'center', gap: 4,
+      }}>
+        <MapPinIcon style={{ width: 10, height: 10 }} />
+        Active Missions ({active.length})
+      </div>
+      {active.map(m => {
+        const remaining = m.duration_min
+          ? Math.max(0, Math.round(m.duration_min - (Date.now() / 1000 - m.start_time) / 60))
+          : null
+        const priColor = m.priority === 'CRITICAL' ? C.red : m.priority === 'HIGH' ? C.amber : C.accent
+        return (
+          <div key={m.id} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px',
+            background: C.surfaceCard, border: `1px solid rgba(255,255,255,0.06)`,
+            borderLeft: `2px solid ${priColor}`,
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 700, color: C.textPrimary,
+                letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{m.name}</div>
+              {m.description && (
+                <div style={{
+                  fontSize: 9, color: C.textMuted, marginTop: 1,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{m.description}</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              {m.domain && (
+                <span style={{
+                  fontSize: 7, padding: '1px 4px', fontWeight: 700, letterSpacing: '0.1em',
+                  textTransform: 'uppercase', background: `${C.accent}22`, color: C.accent,
+                }}>{m.domain}</span>
+              )}
+              <span style={{
+                fontSize: 7, padding: '1px 4px', fontWeight: 700, letterSpacing: '0.1em',
+                textTransform: 'uppercase', background: `${priColor}22`, color: priColor,
+              }}>{m.priority}</span>
+              {remaining !== null && (
+                <span style={{
+                  display: 'flex', alignItems: 'center', gap: 2,
+                  fontSize: 8, color: remaining <= 5 ? C.amber : C.textDim,
+                }}>
+                  <ClockIcon style={{ width: 9, height: 9 }} />
+                  {remaining}m
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Mission Control Page ─────────────────────────────────────────────────────
+
+function MissionControlPage({ missions, sendMission, events, connected, callsign, onBack, muted, setMuted }) {
+  const [showForm, setShowForm] = useState(false)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [domain, setDomain] = useState('')
+  const [priority, setPriority] = useState('HIGH')
+  const [duration, setDuration] = useState('30')
+  const [feedback, setFeedback] = useState(null)
+  const feedRef = useRef(null)
+
+  const activeMissions = (missions || []).filter(m => m.status === 'active')
+
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight
+  }, [events])
+
+  const handleCreate = () => {
+    if (!name.trim()) return
+    sendMission({
+      action: 'create',
+      name: name.trim(),
+      description: description.trim(),
+      domain: domain || undefined,
+      priority,
+      duration_min: parseInt(duration) || 30,
+    })
+    setName(''); setDescription(''); setDomain(''); setPriority('HIGH'); setDuration('30')
+    setShowForm(false)
+    setFeedback('Mission created')
+    setTimeout(() => setFeedback(null), 3000)
+  }
+
+  const handleCancel = (missionId) => {
+    sendMission({ action: 'cancel', mission_id: missionId })
+    setFeedback('Mission cancelled')
+    setTimeout(() => setFeedback(null), 3000)
+  }
+
+  const inputStyle = {
+    width: '100%', padding: '10px 8px', background: C.surfacePrimary,
+    border: `1px solid rgba(255,255,255,0.08)`, color: C.textPrimary,
+    fontSize: 10, fontFamily: 'inherit', outline: 'none',
+  }
+
+  const threatLevel = useMemo(() => {
+    const t = events.filter(e => e.domain === 'THREAT' && e.payload?.threat_level).slice(-1)
+    return t.length > 0 ? t[0].payload.threat_level : 'GREEN'
+  }, [events])
+  const threatColor = threatLevel === 'RED' ? C.red : threatLevel === 'AMBER' ? C.amber : '#4ade80'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden', background: C.surfacePrimary }}>
+
+      {/* Header */}
+      <header style={{
+        padding: '8px 12px', borderBottom: `1px solid rgba(255,255,255,0.05)`,
+        background: C.surfaceCard, flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={onBack} style={{
+              display: 'flex', alignItems: 'center', background: 'none', border: 'none',
+              color: C.textDim, cursor: 'pointer', padding: 2,
+            }}>
+              <ArrowLeftIcon style={{ width: 14, height: 14 }} />
+            </button>
+            <img src="/field/img/macs_logo_white.png" alt="MACS" style={{ height: 18, objectFit: 'contain' }} />
+            <span style={{
+              fontSize: 8, padding: '2px 7px', fontWeight: 700,
+              letterSpacing: '0.15em', textTransform: 'uppercase',
+              background: `${threatColor}22`, color: threatColor,
+              border: `1px solid ${threatColor}44`,
+            }}>{threatLevel}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <button onClick={() => setMuted(m => !m)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+              color: muted ? C.red : C.green,
+            }}>
+              {muted
+                ? <BellSlashIcon style={{ width: 14, height: 14 }} />
+                : <BellIcon style={{ width: 14, height: 14 }} />}
+            </button>
+            {feedback && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9,
+                color: C.green, letterSpacing: '0.1em' }}>
+                <CheckCircleIcon style={{ width: 10, height: 10 }} /> {feedback}
+              </span>
+            )}
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, padding: '2px 7px',
+              fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase',
+              background: connected ? `${C.green}15` : `${C.red}15`,
+              color: connected ? C.green : C.red,
+              border: `1px solid ${connected ? C.green : C.red}44`,
+            }}>
+              <StatusDot color={connected ? C.green : C.red} pulse={connected} />
+              {connected ? 'LIVE' : 'OFFLINE'}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+          <ClipboardDocumentListIcon style={{ width: 12, height: 12, color: C.accent }} />
+          <span style={{ fontSize: 9, color: C.textMuted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Mission Control
+          </span>
+          <span style={{ fontSize: 9, color: C.textDim }}>{callsign}</span>
+        </div>
+      </header>
+
+      {/* Active missions list */}
+      <div style={{
+        flexShrink: 0, maxHeight: '35vh', overflowY: 'auto',
+        borderBottom: `1px solid rgba(255,255,255,0.05)`,
+      }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '8px 10px', background: C.surfaceCard,
+        }}>
+          <span style={{
+            fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+            textTransform: 'uppercase', color: C.accent,
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}>
+            <MapPinIcon style={{ width: 11, height: 11 }} />
+            Active Missions ({activeMissions.length})
+          </span>
+          <button onClick={() => setShowForm(f => !f)} style={{
+            display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
+            background: showForm ? `${C.red}15` : `${C.accent}15`,
+            border: `1px solid ${showForm ? C.red : C.accent}55`,
+            color: showForm ? C.red : C.accent,
+            fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            {showForm ? <XMarkIcon style={{ width: 10, height: 10 }} /> : <PlusIcon style={{ width: 10, height: 10 }} />}
+            {showForm ? 'Cancel' : 'New Mission'}
+          </button>
+        </div>
+
+        {/* Create mission form */}
+        {showForm && (
+          <div style={{
+            padding: '10px', background: `${C.accent}06`,
+            borderBottom: `1px solid rgba(255,255,255,0.05)`,
+            display: 'flex', flexDirection: 'column', gap: 6,
+          }}>
+            <input
+              type="text" placeholder="Mission name (e.g. Surge Sortie Alpha)"
+              value={name} onChange={e => setName(e.target.value)}
+              style={inputStyle}
+            />
+            <textarea
+              placeholder="Description / standing orders..."
+              value={description} onChange={e => setDescription(e.target.value)}
+              rows={2} style={{ ...inputStyle, resize: 'none', lineHeight: 1.4 }}
+            />
+            <div style={{ display: 'flex', gap: 5 }}>
+              <select value={domain} onChange={e => setDomain(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+                <option value="">All Domains</option>
+                {['SORTIE', 'FUEL', 'ARMING', 'MAINTENANCE', 'THREAT'].map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <select value={priority} onChange={e => setPriority(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+                <option value="CRITICAL">CRITICAL</option>
+                <option value="HIGH">HIGH</option>
+                <option value="MEDIUM">MEDIUM</option>
+              </select>
+              <input
+                type="number" placeholder="Min" value={duration}
+                onChange={e => setDuration(e.target.value)}
+                style={{ ...inputStyle, width: 55, textAlign: 'center' }}
+              />
+              <span style={{ fontSize: 9, color: C.textDim, alignSelf: 'center', flexShrink: 0 }}>min</span>
+            </div>
+            <button onClick={handleCreate} disabled={!name.trim()} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '12px', background: name.trim() ? `${C.accent}22` : C.surfacePrimary,
+              border: `1px solid ${name.trim() ? C.accent : 'rgba(255,255,255,0.08)'}66`,
+              color: name.trim() ? C.accent : C.textDim,
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase',
+              cursor: name.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
+            }}>
+              <PaperAirplaneIcon style={{ width: 12, height: 12 }} />
+              Issue Mission
+            </button>
+          </div>
+        )}
+
+        {/* Active mission cards */}
+        {activeMissions.length === 0 && !showForm ? (
+          <div style={{
+            padding: '20px', textAlign: 'center', fontSize: 10,
+            color: C.textDim, letterSpacing: '0.08em',
+          }}>No active missions. Tap + New Mission to create one.</div>
+        ) : (
+          activeMissions.map(m => {
+            const remaining = m.duration_min
+              ? Math.max(0, Math.round(m.duration_min - (Date.now() / 1000 - m.start_time) / 60))
+              : null
+            const priColor = m.priority === 'CRITICAL' ? C.red : m.priority === 'HIGH' ? C.amber : C.accent
+            return (
+              <div key={m.id} style={{
+                padding: '8px 10px', borderBottom: `1px solid rgba(255,255,255,0.04)`,
+                borderLeft: `2px solid ${priColor}`,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: C.textPrimary }}>{m.name}</span>
+                      {m.domain && (
+                        <span style={{
+                          fontSize: 7, padding: '1px 4px', fontWeight: 700, letterSpacing: '0.1em',
+                          textTransform: 'uppercase', background: `${C.accent}22`, color: C.accent,
+                        }}>{m.domain}</span>
+                      )}
+                      <span style={{
+                        fontSize: 7, padding: '1px 4px', fontWeight: 700, letterSpacing: '0.1em',
+                        textTransform: 'uppercase', background: `${priColor}22`, color: priColor,
+                      }}>{m.priority}</span>
+                      {remaining !== null && (
+                        <span style={{
+                          display: 'flex', alignItems: 'center', gap: 2,
+                          fontSize: 8, color: remaining <= 5 ? C.amber : C.textDim,
+                        }}>
+                          <ClockIcon style={{ width: 9, height: 9 }} />
+                          {remaining}m left
+                        </span>
+                      )}
+                    </div>
+                    {m.description && (
+                      <div style={{ fontSize: 9, color: C.textMuted, marginTop: 3, lineHeight: 1.4 }}>
+                        {m.description}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => handleCancel(m.id)} style={{
+                    padding: '4px 8px', background: `${C.red}15`, border: `1px solid ${C.red}44`,
+                    color: C.red, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em',
+                    textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                    marginLeft: 8,
+                  }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {/* Feed: all events (mission control sees everything) */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px', borderBottom: `1px solid rgba(255,255,255,0.05)`,
+        background: C.surfaceCard, flexShrink: 0,
+      }}>
+        <span style={{
+          fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+          textTransform: 'uppercase', color: C.textMuted,
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}>
+          <ListBulletIcon style={{ width: 10, height: 10 }} />
+          Live Feed ({events.length})
+        </span>
+      </div>
+
+      <div ref={feedRef} style={{
+        flex: 1, overflowY: 'auto', padding: 0,
+        display: 'flex', flexDirection: 'column', gap: 0,
+      }}>
+        {events.length === 0 ? (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', gap: 8, color: C.textDim,
+            textAlign: 'center', padding: 40, fontSize: 10,
+            letterSpacing: '0.1em', textTransform: 'uppercase',
+          }}>
+            <PaperAirplaneIcon style={{ width: 20, height: 20, opacity: 0.4 }} />
+            {connected ? 'Waiting for activity...' : 'Connecting...'}
+          </div>
+        ) : (
+          events.slice(-80).map(e => <EventCard key={e.id} event={e} compact />)
+        )}
+      </div>
     </div>
   )
 }
