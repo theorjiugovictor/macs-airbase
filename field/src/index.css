@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -10,21 +12,35 @@ html, body, #root {
   overflow: hidden;
 }
 
+:root {
+  --surface-primary: hsl(220, 50%, 5%);
+  --surface-card: hsl(220, 40%, 8%);
+  --surface-hover: hsl(220, 35%, 12%);
+  --text-primary: hsl(210, 20%, 90%);
+  --text-muted: hsl(215, 15%, 60%);
+  --text-dim: hsl(215, 10%, 40%);
+  --accent: #06b6d4;
+  --status-red: #ef4444;
+  --status-amber: #f59e0b;
+  --status-cyan: #06b6d4;
+  --status-green: #22c55e;
+  --status-grey: #4b5563;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: #0d1117;
-  color: #e5e7eb;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--surface-primary);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 
 input, textarea, select, button {
-  font-family: inherit;
+  font-family: 'JetBrains Mono', monospace;
   font-size: inherit;
 }
 
-/* Pulse animation for alerts */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -40,7 +56,6 @@ input, textarea, select, button {
   to { opacity: 1; }
 }
 
-/* Safe area padding for notched phones */
 @supports (padding: max(0px)) {
   .safe-bottom {
     padding-bottom: max(8px, env(safe-area-inset-bottom));
