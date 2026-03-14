@@ -1,157 +1,175 @@
 /**
- * MACS Field App — Mobile-first field intelligence app.
- *
- * v3 — Redesigned UX:
- *   1. Back button to return to role selection
- *   2. Quick reports open an editable sheet with pre-filled detail
- *   3. Always-visible PTT mic button (Web Speech API STT)
- *   4. Smart feed: digest mode (latest per agent) vs. full timeline,
- *      FOR YOU events pinned at top
- *
- * All icons via lucide-react (MIT).
+ * MACS Field App — Mobile field intelligence terminal.
+ * Design: Military command HUD. JetBrains Mono. Dense. No decorative elements.
+ * Icons: @heroicons/react/24/solid exclusively.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useField } from './useField'
+import macsLogo from '../../assets/img/macs_logo_white.png'
 import {
-  Plane, PlaneLanding, Droplets, Crosshair, Wrench, Radar, Globe,
-  Truck, Shield, Radio, Eye, Zap, CheckCircle2, AlertTriangle,
-  RefreshCw, Ban, Volume2, ClipboardList, Scale, MessageSquare,
-  Send, Circle, Feather, Target, Mic, MicOff, ArrowLeft, X,
-  Filter, List, ChevronDown,
-} from 'lucide-react'
+  PaperAirplaneIcon,
+  BeakerIcon,
+  BoltIcon,
+  WrenchScrewdriverIcon,
+  EyeIcon,
+  GlobeAltIcon,
+  TruckIcon,
+  ShieldCheckIcon,
+  SignalIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
+  NoSymbolIcon,
+  SpeakerWaveIcon,
+  ClipboardDocumentListIcon,
+  ScaleIcon,
+  ArrowLeftIcon,
+  XMarkIcon,
+  FunnelIcon,
+  Bars3Icon,
+  MicrophoneIcon,
+  WrenchIcon,
+  ViewfinderCircleIcon,
+  SparklesIcon,
+} from '@heroicons/react/24/solid'
 
-// ── Constants ──────────────────────────────────────────────────────────────
+// ── Design tokens (mirrors CSS vars) ──────────────────────────────────────
 
-const DOMAIN_COLOR = {
-  SORTIE: '#3b82f6', FUEL: '#f97316', ARMING: '#ef4444',
-  MAINTENANCE: '#8b5cf6', THREAT: '#06b6d4', SYSTEM: '#64748b',
+const C = {
+  cyan:    '#06b6d4',
+  red:     '#ef4444',
+  amber:   '#f59e0b',
+  green:   '#22c55e',
+  grey:    '#4b5563',
+  surface: 'hsl(220,50%,5%)',
+  card:    'hsl(220,40%,8%)',
+  hover:   'hsl(220,35%,12%)',
+  border:  'rgba(255,255,255,0.05)',
+  borderM: 'rgba(255,255,255,0.10)',
 }
 
 const SEVERITY_COLOR = {
-  CRITICAL: '#ef4444', HIGH: '#f59e0b', AMBER: '#f59e0b',
-  MEDIUM: '#06b6d4', LOW: '#22c55e', INFO: '#4b5563',
+  CRITICAL: C.red,
+  HIGH:     C.amber,
+  AMBER:    C.amber,
+  MEDIUM:   C.cyan,
+  LOW:      C.green,
+  INFO:     C.grey,
 }
 
 const DOMAIN_ICONS = {
-  SORTIE: Plane, FUEL: Droplets, ARMING: Crosshair,
-  MAINTENANCE: Wrench, THREAT: Radar, SYSTEM: Globe,
+  SORTIE:      PaperAirplaneIcon,
+  FUEL:        BeakerIcon,
+  ARMING:      BoltIcon,
+  MAINTENANCE: WrenchScrewdriverIcon,
+  THREAT:      EyeIcon,
+  SYSTEM:      GlobeAltIcon,
 }
 
 const ROLES = [
-  { id: 'pad_crew', label: 'Pad Crew', Icon: Wrench, desc: 'Fuel, arming & maintenance at pads' },
-  { id: 'convoy', label: 'Convoy', Icon: Truck, desc: 'Fuel supply chain & transport' },
-  { id: 'security', label: 'Security', Icon: Shield, desc: 'Perimeter watch & threat reports' },
-  { id: 'pilot', label: 'Pilot', Icon: Plane, desc: 'Flight ops & recovery' },
-  { id: 'hq', label: 'HQ Liaison', Icon: Radio, desc: 'Command authority & intel' },
+  { id: 'pad_crew',  label: 'PAD CREW',   Icon: WrenchScrewdriverIcon, desc: 'Fuel, arming & maintenance at pads' },
+  { id: 'convoy',   label: 'CONVOY',      Icon: TruckIcon,              desc: 'Fuel supply chain & transport' },
+  { id: 'security', label: 'SECURITY',    Icon: ShieldCheckIcon,        desc: 'Perimeter watch & threat reports' },
+  { id: 'pilot',    label: 'PILOT',       Icon: PaperAirplaneIcon,      desc: 'Flight ops & recovery' },
+  { id: 'hq',       label: 'HQ LIAISON',  Icon: SignalIcon,             desc: 'Command authority & intel' },
 ]
 
-// Quick reports now have a `prompt` — hint text shown in the edit sheet
 const QUICK_REPORTS = {
   pad_crew: [
-    { Icon: Droplets, label: 'Refuel Done', domain: 'FUEL', severity: 'LOW',
-      template: 'Refueling complete on [aircraft] at [pad].', prompt: 'Which aircraft / pad?' },
-    { Icon: Crosshair, label: 'Armed', domain: 'ARMING', severity: 'LOW',
-      template: 'Arming complete, weapons safe on [aircraft].', prompt: 'Aircraft ID, loadout config?' },
-    { Icon: Wrench, label: 'Fault Found', domain: 'MAINTENANCE', severity: 'HIGH',
-      template: 'Fault detected: [describe fault] on [aircraft] at [pad].', prompt: 'What fault? Which aircraft?' },
-    { Icon: CheckCircle2, label: 'Inspection OK', domain: 'MAINTENANCE', severity: 'LOW',
-      template: 'Pre-flight inspection complete. [aircraft] serviceable at [pad].', prompt: 'Aircraft ID?' },
-    { Icon: AlertTriangle, label: 'Spill', domain: 'FUEL', severity: 'HIGH',
-      template: 'Fuel spill at [pad/location]. Cleanup required. Estimated [X] litres.', prompt: 'Location, estimated size?' },
-    { Icon: RefreshCw, label: 'Loadout Swap', domain: 'ARMING', severity: 'MEDIUM',
-      template: 'Loadout reconfiguration on [aircraft]: [from] → [to]. ETA [X] min.', prompt: 'Aircraft, old → new loadout, ETA?' },
+    { Icon: BeakerIcon,              label: 'REFUEL DONE',   domain: 'FUEL',        severity: 'LOW',
+      template: 'Refueling complete on [aircraft] at [pad].',                        prompt: 'Aircraft / pad?' },
+    { Icon: BoltIcon,                label: 'ARMED',         domain: 'ARMING',      severity: 'LOW',
+      template: 'Arming complete, weapons safe on [aircraft].',                      prompt: 'Aircraft ID, loadout?' },
+    { Icon: WrenchIcon,              label: 'FAULT',         domain: 'MAINTENANCE', severity: 'HIGH',
+      template: 'Fault detected: [describe fault] on [aircraft] at [pad].',          prompt: 'Fault? Aircraft?' },
+    { Icon: CheckCircleIcon,         label: 'INSP OK',       domain: 'MAINTENANCE', severity: 'LOW',
+      template: 'Pre-flight inspection complete. [aircraft] serviceable at [pad].',  prompt: 'Aircraft ID?' },
+    { Icon: ExclamationTriangleIcon, label: 'SPILL',         domain: 'FUEL',        severity: 'HIGH',
+      template: 'Fuel spill at [pad/location]. ~[X] litres. Cleanup required.',      prompt: 'Location, volume?' },
+    { Icon: ArrowPathIcon,           label: 'LOADOUT SWAP',  domain: 'ARMING',      severity: 'MEDIUM',
+      template: 'Loadout reconfig on [aircraft]: [from] → [to]. ETA [X] min.',       prompt: 'Aircraft, old→new, ETA?' },
   ],
   convoy: [
-    { Icon: Truck, label: 'ETA Update', domain: 'FUEL', severity: 'MEDIUM',
-      template: 'Convoy en route. Current position [location]. ETA [X] minutes.', prompt: 'Position, ETA to base?' },
-    { Icon: Ban, label: 'Road Blocked', domain: 'FUEL', severity: 'HIGH',
-      template: 'Road blocked at [location]. Cause: [debris/bridge/enemy]. Rerouting via [alt route].', prompt: 'Where blocked? Cause? Alt route?' },
-    { Icon: AlertTriangle, label: 'Under Fire', domain: 'FUEL', severity: 'CRITICAL',
-      template: 'Convoy under fire at [location]! [X] vehicles, requesting [support type].', prompt: 'Location, threat type, what support?' },
-    { Icon: CheckCircle2, label: 'Delivered', domain: 'FUEL', severity: 'LOW',
-      template: 'Fuel delivery complete. [X] litres JP-8 delivered to [location].', prompt: 'Litres delivered? To where?' },
-    { Icon: Wrench, label: 'Truck Down', domain: 'FUEL', severity: 'HIGH',
-      template: 'Vehicle breakdown at [location]. Truck [ID]. Fault: [describe]. Need recovery.', prompt: 'Which truck? Where? What fault?' },
+    { Icon: TruckIcon,               label: 'ETA UPDATE',    domain: 'FUEL',        severity: 'MEDIUM',
+      template: 'Convoy en route. Position [location]. ETA [X] min.',                prompt: 'Position, ETA?' },
+    { Icon: NoSymbolIcon,            label: 'ROAD BLOCKED',  domain: 'FUEL',        severity: 'HIGH',
+      template: 'Road blocked at [location]. Cause: [debris/enemy]. Rerouting via [alt].',  prompt: 'Where? Cause? Alt route?' },
+    { Icon: ExclamationTriangleIcon, label: 'UNDER FIRE',    domain: 'FUEL',        severity: 'CRITICAL',
+      template: 'Convoy under fire at [location]! [X] vehicles. Requesting [support].',     prompt: 'Location, threat, support needed?' },
+    { Icon: CheckCircleIcon,         label: 'DELIVERED',     domain: 'FUEL',        severity: 'LOW',
+      template: 'Fuel delivery complete. [X] litres JP-8 to [location].',            prompt: 'Litres, destination?' },
+    { Icon: WrenchIcon,              label: 'TRUCK DOWN',    domain: 'FUEL',        severity: 'HIGH',
+      template: 'Vehicle breakdown at [location]. Truck [ID]. Fault: [describe].',   prompt: 'Truck ID, location, fault?' },
   ],
   security: [
-    { Icon: Eye, label: 'Movement', domain: 'THREAT', severity: 'HIGH',
-      template: 'Movement spotted in sector [X]. [count] personnel/vehicles. Direction: [bearing].', prompt: 'Sector, count, direction?' },
-    { Icon: Zap, label: 'Contact', domain: 'THREAT', severity: 'CRITICAL',
-      template: 'Contact! Hostile activity at sector [X]. Type: [infantry/vehicle/drone]. Engaging/observing.', prompt: 'Sector, threat type, your action?' },
-    { Icon: CheckCircle2, label: 'All Clear', domain: 'THREAT', severity: 'LOW',
-      template: 'Sector [X] clear. Patrol complete, no threats observed.', prompt: 'Which sector?' },
-    { Icon: Volume2, label: 'Acoustic', domain: 'THREAT', severity: 'AMBER',
-      template: 'Unusual acoustic signature in sector [X]. Type: [engine/rotor/blast]. Bearing [deg].', prompt: 'Sector, sound type, bearing?' },
-    { Icon: Target, label: 'Drone', domain: 'THREAT', severity: 'HIGH',
-      template: 'Possible drone activity over sector [X]. Altitude ~[X]m. Moving [direction].', prompt: 'Sector, altitude, direction?' },
+    { Icon: EyeIcon,                 label: 'MOVEMENT',      domain: 'THREAT',      severity: 'HIGH',
+      template: 'Movement in sector [X]. [N] personnel/vehicles. Bearing [deg].',    prompt: 'Sector, count, direction?' },
+    { Icon: BoltIcon,                label: 'CONTACT',       domain: 'THREAT',      severity: 'CRITICAL',
+      template: 'Contact! Hostile activity at sector [X]. Type: [infantry/vehicle/drone].', prompt: 'Sector, threat type, action?' },
+    { Icon: CheckCircleIcon,         label: 'ALL CLEAR',     domain: 'THREAT',      severity: 'LOW',
+      template: 'Sector [X] clear. Patrol complete, no threats observed.',           prompt: 'Sector?' },
+    { Icon: SpeakerWaveIcon,         label: 'ACOUSTIC',      domain: 'THREAT',      severity: 'AMBER',
+      template: 'Acoustic contact in sector [X]. Type: [engine/rotor/blast]. Bearing [deg].', prompt: 'Sector, type, bearing?' },
+    { Icon: ViewfinderCircleIcon,    label: 'DRONE',         domain: 'THREAT',      severity: 'HIGH',
+      template: 'Drone activity over sector [X]. Alt ~[X]m. Direction: [bearing].',  prompt: 'Sector, altitude, direction?' },
   ],
   pilot: [
-    { Icon: Plane, label: 'Ready', domain: 'SORTIE', severity: 'LOW',
-      template: '[Aircraft] ready for taxi at [pad]. Systems green, pilot [callsign] aboard.', prompt: 'Aircraft, pad, your callsign?' },
-    { Icon: Feather, label: 'Bird Strike', domain: 'SORTIE', severity: 'HIGH',
-      template: 'Bird strike on [aircraft] during [phase]. Inspecting [area]. Damage: [assessment].', prompt: 'Aircraft, phase, damage assessment?' },
-    { Icon: Crosshair, label: 'Weapons Exp.', domain: 'SORTIE', severity: 'MEDIUM',
-      template: 'Weapons expended on [aircraft]. Rounds/missiles remaining: [count]. RTB.', prompt: 'What expended? Remaining?' },
-    { Icon: AlertTriangle, label: 'Emergency', domain: 'SORTIE', severity: 'CRITICAL',
-      template: 'MAYDAY — [aircraft] declaring emergency. Nature: [describe]. Fuel: [X]%. Position: [location].', prompt: 'Aircraft, nature of emergency, fuel, position?' },
-    { Icon: PlaneLanding, label: 'Recovered', domain: 'SORTIE', severity: 'LOW',
-      template: '[Aircraft] recovered at [pad]. Flight time [X] min. Status: [serviceable/needs inspection].', prompt: 'Aircraft, pad, flight time, status?' },
+    { Icon: PaperAirplaneIcon,       label: 'READY',         domain: 'SORTIE',      severity: 'LOW',
+      template: '[Aircraft] ready for taxi at [pad]. Systems green, pilot [callsign].', prompt: 'Aircraft, pad, callsign?' },
+    { Icon: SparklesIcon,            label: 'BIRD STRIKE',   domain: 'SORTIE',      severity: 'HIGH',
+      template: 'Bird strike on [aircraft] during [phase]. Damage: [assessment].',   prompt: 'Aircraft, phase, damage?' },
+    { Icon: ViewfinderCircleIcon,    label: 'WPN EXP',       domain: 'SORTIE',      severity: 'MEDIUM',
+      template: 'Weapons expended on [aircraft]. Remaining: [count]. RTB.',          prompt: 'Expended, remaining?' },
+    { Icon: ExclamationTriangleIcon, label: 'EMERGENCY',     domain: 'SORTIE',      severity: 'CRITICAL',
+      template: 'MAYDAY — [aircraft] declaring emergency. Nature: [describe]. Fuel: [X]%.',  prompt: 'Aircraft, nature, fuel, position?' },
+    { Icon: ArrowPathIcon,           label: 'RECOVERED',     domain: 'SORTIE',      severity: 'LOW',
+      template: '[Aircraft] recovered at [pad]. Flight [X] min. Status: [serviceable/inspect].', prompt: 'Aircraft, pad, time, status?' },
   ],
   hq: [
-    { Icon: ClipboardList, label: 'Tasking', domain: 'SORTIE', severity: 'HIGH',
-      template: 'New tasking from COMJFAC: [describe mission]. [X] sorties required within [Y] minutes.', prompt: 'Mission type, sorties needed, time window?' },
-    { Icon: Radio, label: 'Intel', domain: 'THREAT', severity: 'MEDIUM',
-      template: 'Intel update: [source] reports [describe threat/situation] in [area]. Assessment: [impact].', prompt: 'Source, what intel, which area, impact?' },
-    { Icon: Scale, label: 'ROE Change', domain: 'SORTIE', severity: 'HIGH',
-      template: 'ROE update: [old ROE] → [new ROE]. Effective immediately. Reason: [context].', prompt: 'Old ROE, new ROE, reason?' },
-    { Icon: RefreshCw, label: 'Redirect', domain: 'SORTIE', severity: 'HIGH',
-      template: 'Redirect [aircraft/sortie] to [new tasking/area]. Priority: [level]. Reason: [context].', prompt: 'What to redirect, where, why?' },
+    { Icon: ClipboardDocumentListIcon, label: 'TASKING',     domain: 'SORTIE',      severity: 'HIGH',
+      template: 'Tasking from COMJFAC: [mission]. [X] sorties req within [Y] min.', prompt: 'Mission, sorties, window?' },
+    { Icon: SignalIcon,              label: 'INTEL',         domain: 'THREAT',      severity: 'MEDIUM',
+      template: 'Intel update: [source] reports [threat] in [area]. Assessment: [impact].', prompt: 'Source, intel, area, impact?' },
+    { Icon: ScaleIcon,               label: 'ROE CHANGE',    domain: 'SORTIE',      severity: 'HIGH',
+      template: 'ROE update: [old] → [new]. Effective immediately. Reason: [context].', prompt: 'Old ROE, new ROE, reason?' },
+    { Icon: ArrowPathIcon,           label: 'REDIRECT',      domain: 'SORTIE',      severity: 'HIGH',
+      template: 'Redirect [aircraft/sortie] to [tasking/area]. Priority: [level].',  prompt: 'What, where, priority?' },
   ],
 }
 
-// ── Speech-to-Text Hook ──────────────────────────────────────────────────
+// ── Speech-to-Text Hook ───────────────────────────────────────────────────
 
 function useSpeechToText() {
-  const [listening, setListening] = useState(false)
+  const [listening, setListening]   = useState(false)
   const [transcript, setTranscript] = useState('')
-  const [supported, setSupported] = useState(false)
+  const [supported, setSupported]   = useState(false)
   const recRef = useRef(null)
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (SR) {
-      setSupported(true)
-      const rec = new SR()
-      rec.continuous = true
-      rec.interimResults = true
-      rec.lang = 'en-US'
-      rec.onresult = (e) => {
-        let text = ''
-        for (let i = 0; i < e.results.length; i++) {
-          text += e.results[i][0].transcript
-        }
-        setTranscript(text)
-      }
-      rec.onerror = () => setListening(false)
-      rec.onend = () => setListening(false)
-      recRef.current = rec
+    if (!SR) return
+    setSupported(true)
+    const rec = new SR()
+    rec.continuous     = true
+    rec.interimResults = true
+    rec.lang           = 'en-US'
+    rec.onresult = (e) => {
+      let text = ''
+      for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript
+      setTranscript(text)
     }
+    rec.onerror = () => setListening(false)
+    rec.onend   = () => setListening(false)
+    recRef.current = rec
   }, [])
 
   const start = useCallback(() => {
-    if (recRef.current && !listening) {
-      setTranscript('')
-      recRef.current.start()
-      setListening(true)
-    }
+    if (recRef.current && !listening) { setTranscript(''); recRef.current.start(); setListening(true) }
   }, [listening])
 
   const stop = useCallback(() => {
-    if (recRef.current && listening) {
-      recRef.current.stop()
-      setListening(false)
-    }
+    if (recRef.current && listening) { recRef.current.stop(); setListening(false) }
   }, [listening])
 
   const reset = useCallback(() => setTranscript(''), [])
@@ -159,39 +177,63 @@ function useSpeechToText() {
   return { listening, transcript, supported, start, stop, reset }
 }
 
-// ── Role Selection Screen ──────────────────────────────────────────────────
+// ── Shared micro-components ──────────────────────────────────────────────
+
+function Badge({ text, color }) {
+  return (
+    <span style={{
+      fontSize: 8, padding: '1px 5px', fontWeight: 700,
+      letterSpacing: '0.12em', textTransform: 'uppercase',
+      color, background: `${color}18`,
+      border: `1px solid ${color}28`,
+    }}>{text}</span>
+  )
+}
+
+function StatusDot({ on }) {
+  return (
+    <span style={{
+      display: 'inline-block', width: 5, height: 5, borderRadius: '50%',
+      background: on ? C.green : C.red,
+      animation: on ? 'pulseDot 2s infinite' : 'none',
+      flexShrink: 0,
+    }} />
+  )
+}
+
+// ── Role Selection ────────────────────────────────────────────────────────
 
 function RoleSelect({ onSelect }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', height: '100vh',
-      padding: 20, justifyContent: 'center', gap: 12,
+      padding: '24px 16px', justifyContent: 'center', gap: 6,
+      background: C.surface,
     }}>
-      <div style={{ textAlign: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <Plane size={26} />
-          <span style={{ fontSize: 28, fontWeight: 800 }}>MACS FIELD</span>
-        </div>
-        <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
-          Select your role to begin
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <img src={macsLogo} alt="MACS" style={{ height: 30, width: 'auto', marginBottom: 10 }} />
+        <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+          Select role to authenticate
         </div>
       </div>
+
       {ROLES.map(r => (
         <button
           key={r.id}
           onClick={() => onSelect(r.id)}
           style={{
-            display: 'flex', alignItems: 'center', gap: 14,
-            padding: '16px 18px', borderRadius: 10,
-            background: '#111827', border: '1px solid #1f2937',
-            color: '#e5e7eb', fontSize: 15, cursor: 'pointer',
-            textAlign: 'left', transition: 'background 0.15s',
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '13px 14px',
+            background: C.card, border: `1px solid ${C.borderM}`,
+            color: 'var(--text-primary)', cursor: 'pointer', textAlign: 'left',
           }}
         >
-          <r.Icon size={28} />
+          <r.Icon style={{ width: 16, height: 16, color: C.cyan, flexShrink: 0 }} />
           <div>
-            <div style={{ fontWeight: 700 }}>{r.label}</div>
-            <div style={{ color: '#6b7280', fontSize: 12 }}>{r.desc}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', color: 'var(--text-primary)' }}>
+              {r.label}
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 2 }}>{r.desc}</div>
           </div>
         </button>
       ))}
@@ -199,12 +241,14 @@ function RoleSelect({ onSelect }) {
   )
 }
 
-// ── Quick Report Edit Sheet ─────────────────────────────────────────────
+// ── Report Sheet (bottom overlay) ─────────────────────────────────────────
 
 function ReportSheet({ qr, onSend, onClose }) {
   const [text, setText] = useState(qr.template)
   const inputRef = useRef(null)
   useEffect(() => { inputRef.current?.focus() }, [])
+
+  const sevColor = SEVERITY_COLOR[qr.severity] || C.grey
 
   const handleSend = () => {
     if (!text.trim()) return
@@ -213,127 +257,144 @@ function ReportSheet({ qr, onSend, onClose }) {
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)',
-      display: 'flex', alignItems: 'flex-end', zIndex: 100,
-      animation: 'fadeIn 0.15s ease',
-    }} onClick={onClose}>
-      <div style={{
-        width: '100%', background: '#111827',
-        borderTop: '1px solid #1f2937',
-        borderRadius: '16px 16px 0 0',
-        padding: '16px 14px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
-        animation: 'slideUp 0.2s ease',
-      }} onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+        display: 'flex', alignItems: 'flex-end', zIndex: 100,
+        animation: 'fadeIn 0.15s ease',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: '100%', background: C.card,
+          borderTop: `1px solid ${C.borderM}`,
+          padding: '14px 14px', paddingBottom: 'max(14px, env(safe-area-inset-bottom))',
+          animation: 'slideUp 0.2s ease',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <qr.Icon size={18} />
-            <span style={{ fontWeight: 700, fontSize: 15 }}>{qr.label}</span>
-            <span style={{
-              fontSize: 9, padding: '1px 6px', borderRadius: 4,
-              background: `${SEVERITY_COLOR[qr.severity]}22`,
-              color: SEVERITY_COLOR[qr.severity], fontWeight: 600,
-            }}>{qr.severity}</span>
+            <qr.Icon style={{ width: 14, height: 14, color: C.cyan }} />
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', color: 'var(--text-primary)' }}>
+              {qr.label}
+            </span>
+            <Badge text={qr.severity} color={sevColor} />
           </div>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 4,
-          }}><X size={18} /></button>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: 4 }}
+          >
+            <XMarkIcon style={{ width: 14, height: 14 }} />
+          </button>
         </div>
-        {/* Hint */}
-        <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>{qr.prompt}</div>
-        {/* Editable message */}
+
+        <div style={{ fontSize: 9, color: 'var(--text-dim)', marginBottom: 8, letterSpacing: '0.05em' }}>
+          {qr.prompt}
+        </div>
+
         <textarea
           ref={inputRef}
           value={text}
           onChange={e => setText(e.target.value)}
           rows={3}
           style={{
-            width: '100%', padding: '12px', borderRadius: 8,
-            background: '#0d1117', border: '1px solid #1f2937',
-            color: '#e5e7eb', fontSize: 14, lineHeight: 1.5,
+            width: '100%', padding: '10px',
+            background: C.surface, border: `1px solid ${C.borderM}`,
+            color: 'var(--text-primary)', fontSize: 10, lineHeight: 1.6,
             resize: 'none', outline: 'none',
           }}
         />
-        <button onClick={handleSend} style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          width: '100%', marginTop: 10, padding: '14px',
-          borderRadius: 10, background: '#3b82f6', border: 'none',
-          color: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-        }}>
-          <Send size={16} /> Send Report
+
+        <button
+          onClick={handleSend}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            width: '100%', marginTop: 8, padding: '12px',
+            background: `${C.cyan}20`, border: `1px solid ${C.cyan}50`,
+            color: C.cyan, fontWeight: 700, fontSize: 10,
+            letterSpacing: '0.15em', cursor: 'pointer',
+          }}
+        >
+          <PaperAirplaneIcon style={{ width: 13, height: 13 }} />
+          TRANSMIT
         </button>
       </div>
     </div>
   )
 }
 
-// ── Event Card ─────────────────────────────────────────────────────────────
+// ── Event Card ────────────────────────────────────────────────────────────
 
 function EventCard({ event, compact }) {
-  const color = SEVERITY_COLOR[event.severity] || '#6b7280'
-  const domainColor = DOMAIN_COLOR[event.domain] || '#64748b'
-  const DomainIcon = DOMAIN_ICONS[event.domain] || Circle
-  const ts = new Date(event.timestamp * 1000).toLocaleTimeString()
-  const msg = event.payload?.message || event.event_type
-  const isDirected = (event.directed_to || []).length > 0
+  const sevColor   = SEVERITY_COLOR[event.severity] || C.grey
+  const DomainIcon = DOMAIN_ICONS[event.domain] || GlobeAltIcon
+  const ts         = new Date(event.timestamp * 1000).toLocaleTimeString('en-GB', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const msg          = event.payload?.message || event.event_type
+  const isDirected   = (event.directed_to || []).length > 0
   const isFieldReport = event.event_type === 'FIELD_REPORT'
-  const isSensor = event.source_layer === 'SENSOR'
-  const isAgent = event.event_type === 'ACTION_TAKEN'
+  const isSensor     = event.source_layer === 'SENSOR'
+  const isAgent      = event.event_type === 'ACTION_TAKEN'
+  const isCritical   = event.severity === 'CRITICAL'
 
-  let badge = null
-  if (isFieldReport) badge = { text: 'FIELD', bg: '#f5920b22', color: '#f59e0b' }
-  else if (isSensor) badge = { text: 'SENSOR', bg: '#06b6d422', color: '#06b6d4' }
-  else if (isAgent) badge = { text: event.source, bg: `${domainColor}22`, color: domainColor }
-
-  // Compact mode: single line
   if (compact) {
     return (
       <div style={{
-        padding: '8px 10px', borderRadius: 6,
-        background: '#111827', borderLeft: `3px solid ${color}`,
-        fontSize: 12, color: '#9ca3af', lineHeight: 1.4,
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        padding: '6px 10px',
+        background: C.card,
+        borderLeft: `2px solid ${sevColor}`,
+        borderBottom: `1px solid ${C.border}`,
+        display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden',
       }}>
-        <DomainIcon size={11} color={domainColor} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />
-        <span style={{ color: domainColor, fontWeight: 600, marginRight: 4 }}>{event.source}</span>
-        {msg.slice(0, 120)}
+        <DomainIcon style={{ width: 11, height: 11, color: C.cyan, flexShrink: 0 }} />
+        <span style={{ fontSize: 9, color: 'var(--text-dim)', flexShrink: 0 }}>{event.source}</span>
+        <span style={{
+          fontSize: 9, color: 'var(--text-muted)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{msg}</span>
+        <span style={{ fontSize: 9, color: 'var(--text-dim)', marginLeft: 'auto', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{ts}</span>
       </div>
     )
   }
 
   return (
     <div style={{
-      padding: '12px 14px', borderRadius: 8,
-      background: event.severity === 'CRITICAL' ? '#1c0a0a' : isDirected ? '#15130a' : '#111827',
-      border: `1px solid ${isDirected ? '#f59e0b44' : '#1f2937'}`,
-      borderLeft: `3px solid ${color}`,
-      animation: 'slideUp 0.3s ease',
+      padding: '8px 10px',
+      background: isCritical ? `${C.red}08` : C.card,
+      borderLeft: `2px solid ${sevColor}`,
+      border: isDirected ? `1px solid ${C.amber}25` : `1px solid ${C.border}`,
+      borderLeft: `2px solid ${sevColor}`,
+      animation: 'slideUp 0.2s ease',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <DomainIcon size={14} color={domainColor} />
-          {badge && (
-            <span style={{
-              fontSize: 9, padding: '1px 6px', borderRadius: 4,
-              background: badge.bg, color: badge.color, fontWeight: 600,
-            }}>{badge.text}</span>
-          )}
-          {isDirected && (
-            <span style={{
-              fontSize: 9, padding: '1px 6px', borderRadius: 4,
-              background: '#f59e0b22', color: '#f59e0b', fontWeight: 600,
-            }}>FOR YOU</span>
-          )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <DomainIcon style={{ width: 12, height: 12, color: C.cyan, flexShrink: 0 }} />
+          {isFieldReport && <Badge text="FIELD"  color={C.amber} />}
+          {isSensor      && <Badge text="SENSOR" color={C.cyan}  />}
+          {isAgent       && <Badge text={event.source || 'AGENT'} color={C.cyan} />}
+          {isDirected    && <Badge text="FOR YOU" color={C.amber} />}
+          <Badge text={event.severity} color={sevColor} />
         </div>
-        <span style={{ color: '#4b5563', fontSize: 10 }}>{ts}</span>
+        <span style={{
+          fontSize: 9, color: 'var(--text-dim)',
+          fontVariantNumeric: 'tabular-nums',
+          animation: isCritical ? 'threatBlink 1.2s infinite' : 'none',
+        }}>{ts}</span>
       </div>
-      <div style={{ fontSize: 13, lineHeight: 1.5, color: isAgent ? '#e5e7eb' : '#9ca3af' }}>
+
+      <div style={{
+        fontSize: 10, lineHeight: 1.55,
+        color: isAgent ? 'var(--text-primary)' : 'var(--text-muted)',
+      }}>
         {msg}
       </div>
+
       {isFieldReport && event.payload?.reporter_callsign && (
-        <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4 }}>
-          — {event.payload.reporter_callsign} ({event.payload.reporter_role})
+        <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 4, letterSpacing: '0.05em' }}>
+          — {event.payload.reporter_callsign} / {event.payload.reporter_role}
         </div>
       )}
     </div>
@@ -343,33 +404,27 @@ function EventCard({ event, compact }) {
 // ── Main App ──────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [selectedRole, setSelectedRole] = useState(null)
-
-  if (!selectedRole) {
-    return <RoleSelect onSelect={setSelectedRole} />
-  }
-
-  return <FieldDashboard role={selectedRole} onBack={() => setSelectedRole(null)} />
+  const [role, setRole] = useState(null)
+  if (!role) return <RoleSelect onSelect={setRole} />
+  return <FieldDashboard role={role} onBack={() => setRole(null)} />
 }
 
+// ── Field Dashboard ───────────────────────────────────────────────────────
 
 function FieldDashboard({ role, onBack }) {
   const { events, connected, sendReport, lastReportId } = useField(null)
-  const [activeSheet, setActiveSheet] = useState(null)     // quick report sheet
-  const [feedMode, setFeedMode] = useState('smart')        // 'smart' | 'all'
+  const [activeSheet, setActiveSheet]   = useState(null)
+  const [feedMode, setFeedMode]         = useState('smart')
   const [reportFeedback, setReportFeedback] = useState(null)
   const feedRef = useRef(null)
 
-  // ── PTT / Speech-to-text ──
   const { listening, transcript, supported: sttSupported, start: sttStart, stop: sttStop, reset: sttReset } = useSpeechToText()
   const [pttDomain, setPttDomain] = useState('')
 
-  // Auto-scroll feed
   useEffect(() => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight
   }, [events, feedMode])
 
-  // Flash feedback on report sent
   useEffect(() => {
     if (lastReportId) {
       setReportFeedback(lastReportId)
@@ -378,16 +433,14 @@ function FieldDashboard({ role, onBack }) {
     }
   }, [lastReportId])
 
-  // When PTT stops and we have transcript, send it
   const handlePttSend = useCallback(() => {
     sttStop()
     if (transcript.trim()) {
-      const domain = pttDomain || guessDomain(transcript, role)
       sendReport({
-        domain,
-        message: transcript.trim(),
+        domain:   pttDomain || guessDomain(transcript, role),
+        message:  transcript.trim(),
         severity: guessSeverity(transcript),
-        tags: ['voice-report'],
+        tags:     ['voice-report'],
       })
       sttReset()
     }
@@ -395,133 +448,148 @@ function FieldDashboard({ role, onBack }) {
 
   const quickReports = QUICK_REPORTS[role] || []
 
-  // ── Smart Feed Logic ──
-  // Smart mode: FOR YOU events first, then latest action per agent, then recent CRITICAL/HIGH
-  const { forYou, digest, allFiltered } = useMemo(() => {
-    const forYou = events.filter(e => (e.directed_to || []).length > 0)
-    const critHigh = events.filter(e =>
-      (e.severity === 'CRITICAL' || e.severity === 'HIGH') &&
-      !(e.directed_to || []).length
-    ).slice(-5)
-
-    // Latest action per agent
+  const { forYou, digest } = useMemo(() => {
+    const forYou   = events.filter(e => (e.directed_to || []).length > 0)
+    const critHigh = events
+      .filter(e => (e.severity === 'CRITICAL' || e.severity === 'HIGH') && !(e.directed_to || []).length)
+      .slice(-5)
     const latestPerAgent = {}
-    events.forEach(e => {
-      if (e.event_type === 'ACTION_TAKEN') latestPerAgent[e.source] = e
-    })
+    events.forEach(e => { if (e.event_type === 'ACTION_TAKEN') latestPerAgent[e.source] = e })
     const agentDigest = Object.values(latestPerAgent)
-
-    // Merge, deduplicate, sort by time
     const seen = new Set()
     const digest = []
-    const addUnique = (arr) => {
-      arr.forEach(e => { if (!seen.has(e.id)) { seen.add(e.id); digest.push(e) } })
-    }
-    addUnique(forYou)
-    addUnique(critHigh)
-    addUnique(agentDigest)
+    const add = arr => arr.forEach(e => { if (!seen.has(e.id)) { seen.add(e.id); digest.push(e) } })
+    add(forYou); add(critHigh); add(agentDigest)
     digest.sort((a, b) => b.timestamp - a.timestamp)
-
-    return { forYou, digest, allFiltered: events }
+    return { forYou, digest }
   }, [events])
 
-  const feedEvents = feedMode === 'smart' ? digest : allFiltered.slice(-60)
+  const feedEvents  = feedMode === 'smart' ? digest : events.slice(-60)
 
   const threatLevel = useMemo(() => {
     const t = events.filter(e => e.domain === 'THREAT' && e.payload?.threat_level).slice(-1)
-    return t.length > 0 ? t[0].payload.threat_level : 'GREEN'
+    return t.length ? t[0].payload.threat_level : 'GREEN'
   }, [events])
 
-  const threatColor = threatLevel === 'RED' ? '#ef4444' : threatLevel === 'AMBER' ? '#f59e0b' : '#4ade80'
-  const roleInfo = ROLES.find(r => r.id === role)
+  const threatColor = threatLevel === 'RED' ? C.red : threatLevel === 'AMBER' ? C.amber : '#4ade80'
+  const roleInfo    = ROLES.find(r => r.id === role)
+
+  const tabBtn = (mode, label, count) => (
+    <button
+      onClick={() => setFeedMode(mode)}
+      style={{
+        flex: 1,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+        padding: '7px 0', border: 'none', cursor: 'pointer',
+        fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
+        background: feedMode === mode ? C.card : 'transparent',
+        color: feedMode === mode ? 'var(--text-primary)' : 'var(--text-dim)',
+        borderBottom: feedMode === mode ? `1px solid ${C.cyan}` : '1px solid transparent',
+      }}
+    >
+      {mode === 'smart' ? <FunnelIcon style={{ width: 11, height: 11 }} /> : <Bars3Icon style={{ width: 11, height: 11 }} />}
+      {label}
+      {count > 0 && (
+        <span style={{
+          fontSize: 8, padding: '0 4px', fontWeight: 800,
+          background: C.amber, color: '#000',
+        }}>{count}</span>
+      )}
+    </button>
+  )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: C.surface }}>
+
       {/* ── Header ── */}
       <header style={{
-        padding: '10px 16px', borderBottom: '1px solid #1f2937',
-        background: '#0d1117', flexShrink: 0,
+        padding: '8px 12px', flexShrink: 0,
+        background: C.card, borderBottom: `1px solid ${C.border}`,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Back button */}
-            <button onClick={onBack} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer',
-              padding: 4, marginLeft: -4,
-            }}><ArrowLeft size={18} /></button>
-            <Plane size={16} />
-            <span style={{ fontSize: 16, fontWeight: 800 }}>MACS</span>
+            <button
+              onClick={onBack}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'none', border: 'none', color: 'var(--text-dim)',
+                cursor: 'pointer', padding: 2,
+              }}
+            >
+              <ArrowLeftIcon style={{ width: 13, height: 13 }} />
+            </button>
+            <img src={macsLogo} alt="MACS" style={{ height: 18, width: 'auto' }} />
             <span style={{
-              fontSize: 10, padding: '2px 8px', borderRadius: 9999,
-              background: `${threatColor}22`, color: threatColor,
-              border: `1px solid ${threatColor}44`, fontWeight: 600,
+              fontSize: 8, padding: '2px 6px', fontWeight: 700,
+              letterSpacing: '0.15em', textTransform: 'uppercase',
+              color: threatColor, background: `${threatColor}12`,
+              border: `1px solid ${threatColor}30`,
+              animation: threatLevel === 'RED' ? 'threatBlink 1s infinite' : 'none',
             }}>{threatLevel}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {reportFeedback && (
+              <span style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: 9, color: C.green, letterSpacing: '0.08em',
+                animation: 'fadeIn 0.2s ease',
+              }}>
+                <CheckCircleIcon style={{ width: 11, height: 11 }} />
+                SENT
+              </span>
+            )}
             <span style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              fontSize: 10, padding: '2px 8px', borderRadius: 9999,
-              background: connected ? '#05291622' : '#1c101722',
-              color: connected ? '#4ade80' : '#f87171',
-              border: `1px solid ${connected ? '#16653444' : '#7f1d1d44'}`,
+              fontSize: 8, padding: '2px 7px', fontWeight: 700, letterSpacing: '0.1em',
+              color: connected ? C.green : C.red,
+              background: connected ? `${C.green}10` : `${C.red}10`,
+              border: `1px solid ${connected ? C.green : C.red}25`,
             }}>
-              <Circle size={6} fill="currentColor" strokeWidth={0} />
+              <StatusDot on={connected} />
               {connected ? 'LIVE' : 'OFFLINE'}
             </span>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-          {roleInfo && <roleInfo.Icon size={16} />}
-          <span style={{ fontSize: 12, color: '#9ca3af' }}>{roleInfo?.label}</span>
-          {reportFeedback && (
-            <span style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              fontSize: 11, color: '#4ade80', marginLeft: 'auto',
-            }}><CheckCircle2 size={12} /> Sent</span>
-          )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5 }}>
+          {roleInfo && <roleInfo.Icon style={{ width: 11, height: 11, color: C.cyan }} />}
+          <span style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.12em' }}>
+            {roleInfo?.label}
+          </span>
         </div>
       </header>
 
       {/* ── Feed Toggle ── */}
       <div style={{
-        display: 'flex', gap: 0, borderBottom: '1px solid #1f2937',
-        background: '#0d1117', flexShrink: 0,
+        display: 'flex', flexShrink: 0,
+        background: C.surface, borderBottom: `1px solid ${C.border}`,
       }}>
-        <button onClick={() => setFeedMode('smart')} style={{
-          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-          padding: '8px 0', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600,
-          background: feedMode === 'smart' ? '#111827' : 'transparent',
-          color: feedMode === 'smart' ? '#e5e7eb' : '#6b7280',
-          borderBottom: feedMode === 'smart' ? '2px solid #3b82f6' : '2px solid transparent',
-        }}><Filter size={12} /> Key Updates {forYou.length > 0 && <span style={{
-          background: '#f59e0b', color: '#000', borderRadius: 9999,
-          padding: '0 5px', fontSize: 9, fontWeight: 800,
-        }}>{forYou.length}</span>}</button>
-        <button onClick={() => setFeedMode('all')} style={{
-          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-          padding: '8px 0', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600,
-          background: feedMode === 'all' ? '#111827' : 'transparent',
-          color: feedMode === 'all' ? '#e5e7eb' : '#6b7280',
-          borderBottom: feedMode === 'all' ? '2px solid #3b82f6' : '2px solid transparent',
-        }}><List size={12} /> All Activity ({events.length})</button>
+        {tabBtn('smart', 'KEY UPDATES', forYou.length)}
+        {tabBtn('all',   `ALL  (${events.length})`, 0)}
       </div>
 
       {/* ── Event Feed ── */}
-      <div ref={feedRef} style={{
-        flex: 1, overflowY: 'auto', padding: '8px 10px',
-        display: 'flex', flexDirection: 'column', gap: 6,
-      }}>
+      <div
+        ref={feedRef}
+        style={{
+          flex: 1, overflowY: 'auto',
+          padding: feedMode === 'all' ? 0 : '6px 8px',
+          display: 'flex', flexDirection: 'column',
+          gap: feedMode === 'all' ? 0 : 4,
+        }}
+      >
         {feedEvents.length === 0 ? (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', gap: 8,
-            color: '#4b5563', textAlign: 'center', padding: 40, fontSize: 13,
+            color: 'var(--text-dim)', padding: 40, fontSize: 9,
+            letterSpacing: '0.15em', textTransform: 'uppercase',
           }}>
-            <Plane size={20} />
-            {connected ? 'Waiting for activity...' : 'Connecting...'}
+            <SignalIcon style={{ width: 14, height: 14 }} />
+            {connected ? 'Awaiting activity...' : 'Connecting...'}
             {feedMode === 'smart' && connected && events.length > 0 && (
-              <div style={{ fontSize: 11 }}>No directed or critical events yet.</div>
+              <span style={{ fontSize: 8 }}>No directed or critical events.</span>
             )}
           </div>
         ) : (
@@ -531,62 +599,84 @@ function FieldDashboard({ role, onBack }) {
         )}
       </div>
 
-      {/* ── Bottom Panel: Quick Reports + PTT ── */}
-      <div style={{
-        flexShrink: 0, borderTop: '1px solid #1f2937',
-        background: '#0d1117', padding: '8px 10px',
-        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
-      }}>
-        {/* PTT bar (always visible) */}
-        {listening ? (
+      {/* ── Bottom Panel ── */}
+      <div
+        className="safe-bottom"
+        style={{
+          flexShrink: 0,
+          background: C.card, borderTop: `1px solid ${C.border}`,
+          padding: '8px 8px',
+        }}
+      >
+        {/* PTT active state */}
+        {listening && (
           <div style={{
-            display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8,
-            padding: '10px 12px', borderRadius: 10,
-            background: '#1c101744', border: '1px solid #ef444444',
+            marginBottom: 8, padding: '10px 12px',
+            background: `${C.red}08`, border: `1px solid ${C.red}30`,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Circle size={8} fill="#ef4444" strokeWidth={0} style={{ animation: 'pulse 1s infinite' }} />
-                Listening...
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 9, color: C.red, fontWeight: 700, letterSpacing: '0.12em',
+              }}>
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%', background: C.red,
+                  animation: 'pulseDot 0.8s infinite',
+                  display: 'inline-block',
+                }} />
+                LISTENING
               </span>
-              {!pttDomain && (
-                <select value={pttDomain} onChange={e => setPttDomain(e.target.value)} style={{
-                  padding: '4px 6px', borderRadius: 4, background: '#111827',
-                  border: '1px solid #1f2937', color: '#e5e7eb', fontSize: 11,
-                }}>
-                  <option value="">Auto-domain</option>
-                  {['FUEL', 'ARMING', 'MAINTENANCE', 'SORTIE', 'THREAT'].map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              )}
+              <select
+                value={pttDomain}
+                onChange={e => setPttDomain(e.target.value)}
+                style={{
+                  padding: '3px 6px', background: C.surface,
+                  border: `1px solid ${C.borderM}`, color: 'var(--text-muted)',
+                  fontSize: 9, letterSpacing: '0.08em',
+                }}
+              >
+                <option value="">AUTO-DOMAIN</option>
+                {['FUEL','ARMING','MAINTENANCE','SORTIE','THREAT'].map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
             </div>
             {transcript && (
-              <div style={{ fontSize: 13, color: '#e5e7eb', lineHeight: 1.5, fontStyle: 'italic' }}>
-                "{transcript}"
-              </div>
+              <div style={{
+                fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5,
+                fontStyle: 'italic', marginBottom: 8,
+              }}>"{transcript}"</div>
             )}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={handlePttSend} style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                padding: '12px', borderRadius: 8, background: '#3b82f6', border: 'none',
-                color: 'white', fontWeight: 700, cursor: 'pointer',
-              }}><Send size={14} /> Send</button>
-              <button onClick={() => { sttStop(); sttReset() }} style={{
-                padding: '12px 16px', borderRadius: 8,
-                background: '#1f2937', border: '1px solid #374151',
-                color: '#9ca3af', cursor: 'pointer',
-              }}><X size={16} /></button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={handlePttSend}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  padding: '10px', background: `${C.cyan}18`, border: `1px solid ${C.cyan}40`,
+                  color: C.cyan, fontWeight: 700, fontSize: 10, letterSpacing: '0.12em', cursor: 'pointer',
+                }}
+              >
+                <PaperAirplaneIcon style={{ width: 13, height: 13 }} />
+                TRANSMIT
+              </button>
+              <button
+                onClick={() => { sttStop(); sttReset() }}
+                style={{
+                  padding: '10px 14px', background: C.surface,
+                  border: `1px solid ${C.borderM}`, color: 'var(--text-dim)', cursor: 'pointer',
+                }}
+              >
+                <XMarkIcon style={{ width: 14, height: 14 }} />
+              </button>
             </div>
           </div>
-        ) : null}
+        )}
 
         {/* Quick report grid */}
         {!listening && (
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 6, marginBottom: 6,
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 4, marginBottom: 6,
           }}>
             {quickReports.map((qr, i) => (
               <button
@@ -595,46 +685,43 @@ function FieldDashboard({ role, onBack }) {
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
                   justifyContent: 'center', gap: 4,
-                  padding: '12px 6px', borderRadius: 8,
-                  background: '#111827', border: '1px solid #1f2937',
-                  color: '#e5e7eb', fontSize: 11, fontWeight: 600,
-                  cursor: 'pointer', transition: 'background 0.15s',
-                  lineHeight: 1.3, textAlign: 'center',
+                  padding: '11px 4px',
+                  background: C.surface, border: `1px solid ${C.borderM}`,
+                  color: 'var(--text-muted)', fontSize: 9, fontWeight: 700,
+                  letterSpacing: '0.08em', cursor: 'pointer', textAlign: 'center',
+                  lineHeight: 1.3, textTransform: 'uppercase',
                 }}
               >
-                <qr.Icon size={18} strokeWidth={1.8} />
+                <qr.Icon style={{ width: 14, height: 14, color: C.cyan }} />
                 {qr.label}
               </button>
             ))}
           </div>
         )}
 
-        {/* PTT mic button — always visible */}
+        {/* PTT / fallback */}
         {!listening && sttSupported && (
           <button
             onTouchStart={e => { e.preventDefault(); sttStart() }}
             onMouseDown={sttStart}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              width: '100%', padding: '16px',
-              borderRadius: 12, border: '2px solid #374151',
-              background: 'linear-gradient(180deg, #1f2937 0%, #111827 100%)',
-              color: '#e5e7eb', fontSize: 15, fontWeight: 700,
-              cursor: 'pointer', userSelect: 'none',
-              transition: 'all 0.15s',
+              width: '100%', padding: '13px',
+              background: C.surface, border: `1px solid ${C.borderM}`,
+              color: 'var(--text-muted)', fontSize: 10, fontWeight: 700,
+              letterSpacing: '0.15em', cursor: 'pointer', userSelect: 'none',
             }}
           >
-            <Mic size={20} /> Hold to Talk
+            <MicrophoneIcon style={{ width: 15, height: 15, color: C.cyan }} />
+            HOLD TO TALK
           </button>
         )}
 
-        {/* Fallback for no STT: text input */}
         {!listening && !sttSupported && (
           <TextReportBar sendReport={sendReport} role={role} />
         )}
       </div>
 
-      {/* Quick report edit sheet overlay */}
       {activeSheet && (
         <ReportSheet qr={activeSheet} onSend={sendReport} onClose={() => setActiveSheet(null)} />
       )}
@@ -642,77 +729,81 @@ function FieldDashboard({ role, onBack }) {
   )
 }
 
-
-// ── Text report bar (fallback when STT is unavailable) ───────────────────
+// ── Text Report Bar (STT fallback) ────────────────────────────────────────
 
 function TextReportBar({ sendReport, role }) {
-  const [text, setText] = useState('')
+  const [text, setText]     = useState('')
   const [domain, setDomain] = useState('')
 
   const handleSend = () => {
     if (!text.trim()) return
     sendReport({
-      domain: domain || guessDomain(text, role),
-      message: text.trim(),
+      domain:   domain || guessDomain(text, role),
+      message:  text.trim(),
       severity: guessSeverity(text),
-      tags: ['text-report'],
+      tags:     ['text-report'],
     })
     setText('')
   }
 
+  const inputStyle = {
+    padding: '10px 8px',
+    background: 'var(--surface-primary)', border: `1px solid ${C.borderM}`,
+    color: 'var(--text-primary)', fontSize: 10, outline: 'none',
+    letterSpacing: '0.05em',
+  }
+
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
-      <select value={domain} onChange={e => setDomain(e.target.value)} style={{
-        width: 80, padding: '12px 6px', borderRadius: 8,
-        background: '#111827', border: '1px solid #1f2937',
-        color: '#e5e7eb', fontSize: 11,
-      }}>
-        <option value="">Auto</option>
-        {['FUEL', 'ARMING', 'MAINTENANCE', 'SORTIE', 'THREAT'].map(d => (
+    <div style={{ display: 'flex', gap: 5 }}>
+      <select
+        value={domain}
+        onChange={e => setDomain(e.target.value)}
+        style={{ ...inputStyle, width: 90 }}
+      >
+        <option value="">AUTO</option>
+        {['FUEL','ARMING','MAINTENANCE','SORTIE','THREAT'].map(d => (
           <option key={d} value={d}>{d}</option>
         ))}
       </select>
       <input
-        type="text" placeholder="Type report..."
-        value={text} onChange={e => setText(e.target.value)}
+        type="text"
+        placeholder="TYPE REPORT..."
+        value={text}
+        onChange={e => setText(e.target.value)}
         onKeyDown={e => e.key === 'Enter' && handleSend()}
-        style={{
-          flex: 1, padding: '12px 10px', borderRadius: 8,
-          background: '#111827', border: '1px solid #1f2937',
-          color: '#e5e7eb', fontSize: 14, outline: 'none',
-        }}
+        style={{ ...inputStyle, flex: 1 }}
       />
-      <button onClick={handleSend} style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '12px 16px', borderRadius: 8,
-        background: '#3b82f6', border: 'none', color: 'white', cursor: 'pointer',
-      }}><Send size={18} /></button>
+      <button
+        onClick={handleSend}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '10px 14px',
+          background: `${C.cyan}18`, border: `1px solid ${C.cyan}40`,
+          color: C.cyan, cursor: 'pointer',
+        }}
+      >
+        <PaperAirplaneIcon style={{ width: 13, height: 13 }} />
+      </button>
     </div>
   )
 }
 
-
-// ── Helpers ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 function guessDomain(text, role) {
   const t = text.toLowerCase()
-  if (t.match(/fuel|truck|convoy|jp-8|tanker|spill|delivery/)) return 'FUEL'
-  if (t.match(/arm|weapon|ordnance|loadout|amraam|iris|bomb|munition/)) return 'ARMING'
-  if (t.match(/maint|fault|inspect|repair|ground|hydraulic|engine/)) return 'MAINTENANCE'
-  if (t.match(/threat|hostile|contact|radar|drone|movement|perimeter|sector/)) return 'THREAT'
-  if (t.match(/sortie|scramble|taxi|takeoff|landing|aircraft|pilot|ready/)) return 'SORTIE'
-  // Default by role
-  const roleDefaults = {
-    pad_crew: 'MAINTENANCE', convoy: 'FUEL', security: 'THREAT',
-    pilot: 'SORTIE', hq: 'SORTIE',
-  }
-  return roleDefaults[role] || 'SYSTEM'
+  if (t.match(/fuel|truck|convoy|jp-8|tanker|spill|delivery/))            return 'FUEL'
+  if (t.match(/arm|weapon|ordnance|loadout|amraam|iris|bomb|munition/))   return 'ARMING'
+  if (t.match(/maint|fault|inspect|repair|ground|hydraulic|engine/))      return 'MAINTENANCE'
+  if (t.match(/threat|hostile|contact|radar|drone|movement|perimeter/))   return 'THREAT'
+  if (t.match(/sortie|scramble|taxi|takeoff|landing|aircraft|pilot/))     return 'SORTIE'
+  return { pad_crew: 'MAINTENANCE', convoy: 'FUEL', security: 'THREAT', pilot: 'SORTIE', hq: 'SORTIE' }[role] || 'SYSTEM'
 }
 
 function guessSeverity(text) {
   const t = text.toLowerCase()
   if (t.match(/mayday|emergency|under fire|critical|hostile|contact!/)) return 'CRITICAL'
-  if (t.match(/fault|blocked|down|spill|strike|urgent/)) return 'HIGH'
-  if (t.match(/update|en route|eta|reconfig/)) return 'MEDIUM'
+  if (t.match(/fault|blocked|down|spill|strike|urgent/))                return 'HIGH'
+  if (t.match(/update|en route|eta|reconfig/))                          return 'MEDIUM'
   return 'LOW'
 }
