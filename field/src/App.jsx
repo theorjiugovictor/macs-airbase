@@ -335,6 +335,7 @@ function ReportSheet({ qr, onSend, onClose }) {
 // ── Event Card ───────────────────────────────────────────────────────────────
 
 function EventCard({ event, compact }) {
+  const [expanded, setExpanded] = useState(false)
   const sevColor = SEVERITY_COLOR[event.severity] || C.grey
   const DomainIcon = DOMAIN_ICONS[event.domain] || GlobeAltIcon
   const ts = new Date(event.timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -346,20 +347,53 @@ function EventCard({ event, compact }) {
 
   if (compact) {
     return (
-      <div style={{
-        padding: '7px 10px', background: C.surfaceCard,
-        borderLeft: `2px solid ${sevColor}`,
-        borderBottom: `1px solid rgba(255,255,255,0.05)`,
-        fontSize: 10, color: C.textMuted, lineHeight: 1.4,
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        display: 'flex', alignItems: 'center', gap: 6,
-      }}>
-        <DomainIcon style={{ width: 12, height: 12, color: C.accent, flexShrink: 0 }} />
-        <span style={{ color: C.accent, fontWeight: 700, marginRight: 2, fontSize: 9,
-          letterSpacing: '0.1em', textTransform: 'uppercase', flexShrink: 0 }}>
-          {event.source}
-        </span>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{msg.slice(0, 120)}</span>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          padding: expanded ? '10px 10px' : '20px 10px',
+          background: C.surfaceCard,
+          borderLeft: `2px solid ${sevColor}`,
+          borderBottom: `1px solid rgba(255,255,255,0.05)`,
+          fontSize: 10, color: C.textMuted, lineHeight: 1.5,
+          cursor: 'pointer',
+          ...(expanded ? {} : {
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }),
+        }}
+      >
+        {expanded ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <DomainIcon style={{ width: 12, height: 12, color: C.accent }} />
+                <span style={{ color: C.accent, fontWeight: 700, fontSize: 9,
+                  letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  {event.source}
+                </span>
+                <span style={{ fontSize: 8, padding: '1px 5px', fontWeight: 700,
+                  letterSpacing: '0.1em', textTransform: 'uppercase',
+                  background: `${sevColor}22`, color: sevColor }}>{event.severity}</span>
+              </div>
+              <span style={{ color: C.textDim, fontSize: 9 }}>{ts}</span>
+            </div>
+            <div style={{ fontSize: 10, lineHeight: 1.5 }}>{msg}</div>
+            {isFieldReport && event.payload?.reporter_callsign && (
+              <div style={{ fontSize: 9, color: C.textDim, marginTop: 4 }}>
+                — {event.payload.reporter_callsign} ({event.payload.reporter_role})
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <DomainIcon style={{ width: 12, height: 12, color: C.accent, flexShrink: 0 }} />
+            <span style={{ color: C.accent, fontWeight: 700, marginRight: 2, fontSize: 9,
+              letterSpacing: '0.1em', textTransform: 'uppercase', flexShrink: 0 }}>
+              {event.source}
+            </span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{msg.slice(0, 120)}</span>
+          </>
+        )}
       </div>
     )
   }
