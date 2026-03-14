@@ -24,6 +24,11 @@
         respond `{"service":"MACS Airbase","version":"2.1","ws":"/ws","field":"/field/","docs":"https://github.com/theorjiugovictor/macs-airbase"}` 200
     }
 
+    # ── HTTP API for ElevenLabs voice agent ───────────────────────────
+    handle_path /api/* {
+        reverse_proxy backend:8080
+    }
+
     # ── Field PWA — mobile app ──────────────────────────────────────────
     handle /field/* {
         uri strip_prefix /field
