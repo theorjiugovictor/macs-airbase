@@ -256,13 +256,13 @@ class TestWorldState:
         mgr.observe(ev)
         assert mgr.state.fuel_level_pct == 55  # +5 from keyword match
 
-    def test_threat_downgrade_keywords(self):
-        """ACTION_TAKEN with de-escalation keywords should improve threat state."""
+    def test_threat_action_text_does_not_silently_downgrade_to_green(self):
+        """Free-form THREAT ACTION_TAKEN text should not silently downgrade the world state."""
         from world_state import WorldStateManager
         from shared_state import Event
 
         mgr = WorldStateManager("surge")
-        mgr.state.threat_level = "AMBER"
+        mgr.state.threat_level = "RED"
         mgr.state.radar_tracks = 2
         ev = Event(
             id="EVT-TEST-4", timestamp=time.time(), source="THREAT",
@@ -270,8 +270,56 @@ class TestWorldState:
             payload={"message": "Track confirmed friendly — blue force exercise. Threat downgraded to GREEN."},
         )
         mgr.observe(ev)
+        assert mgr.state.threat_level == "RED"
+        assert mgr.state.radar_tracks == 2
+
+    def test_threat_resolved_event_downgrades_world_state(self):
+        """Explicit THREAT_RESOLVED events should downgrade the world state."""
+        from world_state import WorldStateManager
+        from shared_state import Event
+
+        mgr = WorldStateManager("surge")
+        mgr.state.threat_level = "RED"
+        mgr.state.radar_tracks = 2
+        ev = Event(
+            id="EVT-TEST-4A", timestamp=time.time(), source="SYSTEM",
+            event_type="THREAT_RESOLVED", domain="THREAT", severity="LOW",
+            payload={"message": "Threat resolved.", "threat_level": "GREEN"},
+        )
+        mgr.observe(ev)
         assert mgr.state.threat_level == "GREEN"
-        assert mgr.state.radar_tracks <= 1
+        assert mgr.state.radar_tracks == 0
+
+    def test_critical_threat_event_escalates_world_state_without_payload_level(self):
+        """Critical THREAT events should escalate world-state even without payload.threat_level."""
+        from world_state import WorldStateManager
+        from shared_state import Event
+
+        mgr = WorldStateManager("surge")
+        mgr.state.threat_level = "GREEN"
+        ev = Event(
+            id="EVT-TEST-4B", timestamp=time.time(), source="SENSOR",
+            event_type="RADAR_CONTACT", domain="THREAT", severity="CRITICAL",
+            payload={"message": "Inbound hostile track detected.", "tracks": 1},
+        )
+        mgr.observe(ev)
+        assert mgr.state.threat_level == "RED"
+        assert mgr.state.radar_tracks == 1
+
+    def test_high_threat_event_escalates_world_state_to_amber_without_payload_level(self):
+        """High THREAT events should escalate to AMBER when no explicit threat level is present."""
+        from world_state import WorldStateManager
+        from shared_state import Event
+
+        mgr = WorldStateManager("surge")
+        mgr.state.threat_level = "GREEN"
+        ev = Event(
+            id="EVT-TEST-4C", timestamp=time.time(), source="SENSOR",
+            event_type="RADAR_CONTACT", domain="THREAT", severity="HIGH",
+            payload={"message": "Unknown fast mover detected.", "tracks": 1},
+        )
+        mgr.observe(ev)
+        assert mgr.state.threat_level == "AMBER"
 
     def test_clamp_prevents_overflow(self):
         from world_state import WorldStateManager

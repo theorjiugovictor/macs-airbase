@@ -204,12 +204,21 @@ class WorldStateManager:
             s.threat_level = str(p["threat_level"])
         if "tracks" in p:
             s.radar_tracks = int(p["tracks"])
+        if event.domain == "THREAT" and "threat_level" not in p:
+            if event.severity == "CRITICAL":
+                s.threat_level = "RED"
+            elif event.severity in {"HIGH", "AMBER"} and s.threat_level != "RED":
+                s.threat_level = "AMBER"
         if event.event_type == "THREAT_RESOLVED":
             s.radar_tracks = 0
             s.threat_level = str(p.get("threat_level", "GREEN"))
             s.ew_jamming = False
         if event.event_type == "EW_JAMMING":
             s.ew_jamming = True
+            if event.severity == "CRITICAL":
+                s.threat_level = "RED"
+            elif s.threat_level != "RED":
+                s.threat_level = "AMBER"
             degradation = int(p.get("coverage_degradation_pct", 10))
             s.comms_coverage_pct -= degradation
         if "coverage_pct" in p:
@@ -295,16 +304,15 @@ class WorldStateManager:
             else:
                 s.sortie_readiness_pct = min(100, s.sortie_readiness_pct + 3)
         elif domain == "THREAT":
-            if any(kw in msg for kw in ("corridor", "safe", "clear", "downgrad", "friendly", "resolved")):
+            if any(kw in msg for kw in ("corridor", "safe", "clear", "friendly", "resolved")):
                 s.comms_coverage_pct = min(100, s.comms_coverage_pct + 5)
-                # Downgrade threat if language suggests de-escalation
-                if any(kw in msg for kw in ("downgrad", "friendly", "resolved", "green")):
-                    s.threat_level = "GREEN"
-                    s.radar_tracks = max(0, s.radar_tracks - 1)
             if any(kw in msg for kw in ("jamming", "ew ", "electronic warfare")):
                 s.ew_jamming = True
                 s.comms_coverage_pct = max(20, s.comms_coverage_pct - 10)
-            if any(kw in msg for kw in ("amber", "elevat", "posture")):
+                s.threat_level = "RED" if event.severity == "CRITICAL" else "AMBER"
+            if any(kw in msg for kw in ("red", "critical", "hostile", "intercept", "engag")):
+                s.threat_level = "RED"
+            elif any(kw in msg for kw in ("amber", "elevat", "posture")) and s.threat_level != "RED":
                 s.threat_level = "AMBER"
 
         self._clamp()
