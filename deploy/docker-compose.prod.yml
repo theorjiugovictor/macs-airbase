@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SABRE — Production Docker Compose (GCE + Caddy + Duck DNS)
+#
+# Exposes:
+#   - HTTPS on :443 via Caddy (auto-TLS with Let's Encrypt)
+#   - WSS at wss://<DOMAIN>/ws
+#
+# Required env vars (set in .env or export before running):
+#   DOMAIN=sabre.duckdns.org
+#   DUCKDNS_TOKEN=your-duckdns-token
+#   GOOGLE_API_KEY=your-gemini-key       (optional, mock mode if absent)
+#   SCENARIO=surge                        (optional, default: surge)
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.prod.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: '3.9'
+
+services:
+  # ── Caddy — reverse proxy + automatic HTTPS ──────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-macs-airbase.duckdns.org}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # TLS certs persist here
+      - caddy_config:/config
+    depends_on:
+      - backend
+    networks:
+      - sabre
+
+  # ── Backend — Python multi-agent swarm + WebSocket ────────────────────────
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8765"                   # only accessible within docker network
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-2.5-flash}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - SCENARIO=${SCENARIO:-surge}
+    command: python main.py --scenario ${SCENARIO:-surge}
+    networks:
+      - sabre
+
+  # ── Duck DNS updater — runs once then cron every 5 min ──────────────────
+  duckdns:
+    image: alpine:3.19
+    restart: unless-stopped
+    environment:
+      - DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
+      - DUCKDNS_SUBDOMAIN=${DUCKDNS_SUBDOMAIN:-macs-airbase}
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      apk add --no-cache curl > /dev/null 2>&1;
+      while true; do
+        RESP=$$(curl -s \"https://www.duckdns.org/update?domains=$${DUCKDNS_SUBDOMAIN}&token=$${DUCKDNS_TOKEN}&ip=\");
+        echo \"$$(date '+%Y-%m-%d %H:%M:%S') DuckDNS: $$RESP\";
+        sleep 300;
+      done
+      "
+    networks:
+      - sabre
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  sabre:
+    driver: bridge
