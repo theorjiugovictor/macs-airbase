@@ -210,10 +210,17 @@ function RoleSelect({ onSelect }) {
       padding: '24px 16px', justifyContent: 'center', gap: 6,
       background: C.surface,
     }}>
-      <div style={{ textAlign: 'center', marginBottom: 24 }}>
-        <img src={macsLogo} alt="MACS" style={{ height: 30, width: 'auto', marginBottom: 10 }} />
-        <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
-          Select role to authenticate
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <img
+          src="/field/img/macs_logo_white.png"
+          alt="MACS Airbase"
+          style={{ height: 48, objectFit: 'contain', marginBottom: 4 }}
+        />
+        <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
+          Multi-Agent Command System &mdash; Field App
+        </div>
+        <div style={{ color: '#4b5563', fontSize: 11, marginTop: 2 }}>
+          Select your role to begin
         </div>
       </div>
 

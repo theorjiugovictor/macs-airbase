@@ -8,14 +8,10 @@
   "description": "MACS Airbase Field App — Report intelligence, receive AI-directed actions",
   "icons": [
     {
-      "src": "/field/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/field/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "/field/img/favicon.png",
+      "sizes": "354x361",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
