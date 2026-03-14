@@ -27,7 +27,7 @@ MACHINE_TYPE="${GCE_MACHINE:-e2-small}"           # 2 vCPU, 2 GB — plenty for 
 INSTANCE_NAME="${GCE_INSTANCE:-sabre-vm}"
 DUCKDNS_SUBDOMAIN="${DUCKDNS_SUBDOMAIN:-macs-airbase}"
 DOMAIN="${DUCKDNS_SUBDOMAIN}.duckdns.org"
-REPO_URL="${REPO_URL:-https://github.com/princeorjiugo/macs-airbase.git}"
+REPO_URL="${REPO_URL:-https://github.com/theorjiugovictor/macs-airbase.git}"
 SCENARIO="${SCENARIO:-surge}"
 
 : "${DUCKDNS_TOKEN:?Set DUCKDNS_TOKEN env var}"
@@ -122,6 +122,8 @@ gcloud compute ssh "$INSTANCE_NAME" --zone="$ZONE" --command="
 DOMAIN=${DOMAIN}
 DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
 DUCKDNS_SUBDOMAIN=${DUCKDNS_SUBDOMAIN}
+OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-2.5-flash}
 GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 SCENARIO=${SCENARIO}
