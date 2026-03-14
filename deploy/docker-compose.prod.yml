@@ -18,9 +18,11 @@
 version: '3.9'
 
 services:
-  # ── Caddy — reverse proxy + automatic HTTPS ──────────────────────────────
+  # ── Caddy — reverse proxy + automatic HTTPS + serves both UIs ──────────
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.caddy
     restart: unless-stopped
     ports:
       - "80:80"
@@ -28,7 +30,6 @@ services:
     environment:
       - DOMAIN=${DOMAIN:-macs-airbase.duckdns.org}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data        # TLS certs persist here
       - caddy_config:/config
     depends_on:

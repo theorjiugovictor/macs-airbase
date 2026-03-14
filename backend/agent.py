@@ -363,6 +363,8 @@ class SAU(ABC):
                 e.domain == self.domain
                 or e.severity in ("CRITICAL", "HIGH")
                 or e.source == "SYSTEM"
+                or e.source_layer == "SENSOR"      # ground truth — always relevant
+                or e.event_type == "FIELD_REPORT"   # human intelligence
                 or e.event_type == "AGENT_OFFLINE"
                 or e.event_type == "ACTION_TAKEN"
             )
@@ -456,10 +458,14 @@ If acting:
   "action": true,
   "event_type": "ACTION_TAKEN",
   "severity": "HIGH|MEDIUM|LOW",
-  "message": "what you are doing (reference other SAUs and event IDs)",
+  "message": "what you are doing (reference other SAUs, sensor data, and event IDs)",
   "references": ["EVT-XXXXX"],
+  "directed_to": ["pad_crew", "convoy", "security", "pilot"],
   "details": {{}}
 }}
+The "directed_to" field is OPTIONAL — include it when your action is relevant to
+specific field roles (pad_crew, convoy, security, pilot, hq). This sends your
+action directly to their mobile devices.
 If no action needed:
 {{
   "action": false
@@ -618,6 +624,9 @@ Respond ONLY with valid JSON. No markdown."""
         else:
             mode = "mock"
 
+        # Directed actions — tell specific field roles about this
+        directed_to = decision.get("directed_to", [])
+
         bulletin.post(
             source=self.agent_id,
             event_type=decision.get("event_type", "ACTION_TAKEN"),
@@ -625,6 +634,7 @@ Respond ONLY with valid JSON. No markdown."""
             severity=decision.get("severity", "MEDIUM"),
             source_layer="AGENT",
             source_mode=mode,
+            directed_to=directed_to,
             payload=payload,
             tags=[self.domain.lower(), "action"],
         )

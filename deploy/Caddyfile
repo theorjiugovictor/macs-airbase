@@ -1,33 +1,52 @@
-# MACS Airbase — Caddy reverse proxy with automatic HTTPS via Duck DNS
+# MACS Airbase — Caddy reverse proxy with automatic HTTPS
 #
-# Caddy automatically provisions Let's Encrypt TLS certificates.
-# The {$DOMAIN} env var is set in docker-compose.prod.yml (e.g. macs-airbase.duckdns.org)
+# Routes:
+#   /ws          → WebSocket backend (bidirectional)
+#   /field/*     → Field PWA (mobile app for ground crews)
+#   /health      → Health check
+#   /api/token   → Token generation endpoint (dev only)
+#   /*           → Command dashboard (default)
 
 {$DOMAIN} {
-    # WebSocket endpoint — proxied to the backend container
+    # ── WebSocket — proxied to backend ──────────────────────────────────
     handle /ws {
         reverse_proxy backend:8765
     }
 
-    # Health check endpoint
+    # ── Health check ────────────────────────────────────────────────────
     handle /health {
         respond "OK" 200
     }
 
-    # Everything else → show a simple info page (or proxy to a frontend)
-    handle {
+    # ── API info ────────────────────────────────────────────────────────
+    handle /api/info {
         header Content-Type "application/json"
-        respond `{"service":"MACS Airbase","status":"online","ws":"/ws","docs":"https://github.com/theorjiugovictor/macs-airbase"}` 200
+        respond `{"service":"MACS Airbase","version":"2.0","ws":"/ws","dashboard":"/","field":"/field/","docs":"https://github.com/theorjiugovictor/macs-airbase"}` 200
     }
 
-    # CORS headers for Lovable frontend (or any external frontend)
+    # ── Field PWA — mobile app ──────────────────────────────────────────
+    handle /field/* {
+        uri strip_prefix /field
+        root * /srv/field
+        file_server
+        try_files {path} /index.html
+    }
+
+    # ── Command Dashboard — default ─────────────────────────────────────
+    handle {
+        root * /srv/dashboard
+        file_server
+        try_files {path} /index.html
+    }
+
+    # ── CORS headers ────────────────────────────────────────────────────
     header {
         Access-Control-Allow-Origin  *
         Access-Control-Allow-Methods "GET, POST, OPTIONS"
         Access-Control-Allow-Headers "Content-Type, Authorization"
     }
 
-    # Logging
+    # ── Logging ─────────────────────────────────────────────────────────
     log {
         output stdout
         format console

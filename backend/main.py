@@ -65,6 +65,7 @@ from personas import build_macs
 from scenarios import ScenarioRunner
 from ws_server import start_ws_server
 from world_state import start_world_state
+from sensors import SensorSimulator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -245,6 +246,11 @@ def main():
     runner = ScenarioRunner(args.scenario)
     runner.start()
 
+    # Start sensor simulator
+    sensor_sim = SensorSimulator(args.scenario)
+    sensor_sim.start()
+    print("  Sensors : active (radar, fuel gauge, weather, EW, perimeter)")
+
     print(f"\n{BOLD}MACS Airbase active. Scenario '{args.scenario}' running.{RESET}\n")
 
     try:
@@ -258,6 +264,7 @@ def main():
             stop_event.wait()
     finally:
         runner.stop()
+        sensor_sim.stop()
         for agent in swarm:
             agent.stop()
         print(f"\n{BOLD}MACS Airbase stopped.{RESET}")

@@ -33,6 +33,7 @@ class Event:
     severity: str        # CRITICAL, HIGH, MEDIUM, LOW, INFO
     source_layer: str = "SYSTEM"  # SENSOR | API | CROWD | AGENT | SYSTEM
     source_mode: str = ""         # "mock" | "gemini" | "claude" | "" (system)
+    directed_to: list = field(default_factory=list)  # target roles: ["convoy", "pad_crew"]
     payload: dict = field(default_factory=dict)
     tags: list = field(default_factory=list)
 
@@ -62,7 +63,8 @@ class BulletinBoard:
     def post(self, source: str, event_type: str, domain: str,
              severity: str, payload: dict, tags: list = None,
              source_layer: str = "SYSTEM",
-             source_mode: str = "") -> Event:
+             source_mode: str = "",
+             directed_to: list = None) -> Event:
         with self._lock:
             self._counter += 1
             event = Event(
@@ -74,6 +76,7 @@ class BulletinBoard:
                 severity=severity,
                 source_layer=source_layer,
                 source_mode=source_mode,
+                directed_to=directed_to or [],
                 payload=payload,
                 tags=tags or [],
             )
