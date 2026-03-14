@@ -44,9 +44,6 @@ import {
   ArrowRightEndOnRectangleIcon,
   BellIcon,
   BellSlashIcon,
-  CommandLineIcon,
-  PlayIcon,
-  StopIcon,
 } from '@heroicons/react/24/solid'
 
 // ── Design tokens ───────────────────────────────────────────────────────────
@@ -432,10 +429,9 @@ export default function App() {
 
 function FieldDashboard({ role, callsign, onBack }) {
   const authInfo = useStableAuth(role, callsign)
-  const { events, connected, sendReport, lastReportId, controlAgent, agentStatus } = useField(authInfo)
+  const { events, connected, sendReport, lastReportId } = useField(authInfo)
   const { notify } = useAlerts()
   const [activeSheet, setActiveSheet] = useState(null)
-  const [showAgentPanel, setShowAgentPanel] = useState(false)
   const [feedMode, setFeedMode] = useState('smart')
   const [reportFeedback, setReportFeedback] = useState(null)
   const [muted, setMuted] = useState(false)
@@ -542,15 +538,6 @@ function FieldDashboard({ role, callsign, onBack }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <button onClick={() => setShowAgentPanel(v => !v)} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: showAgentPanel ? `${C.accent}22` : 'none',
-              border: showAgentPanel ? `1px solid ${C.accent}44` : '1px solid transparent',
-              cursor: 'pointer', padding: 2,
-              color: showAgentPanel ? C.accent : C.textDim,
-            }} title="Agent Control Panel">
-              <CommandLineIcon style={{ width: 14, height: 14 }} />
-            </button>
             <button onClick={() => setMuted(m => !m)} style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: 'none', border: 'none', cursor: 'pointer', padding: 2,
@@ -610,11 +597,6 @@ function FieldDashboard({ role, callsign, onBack }) {
           All Activity ({events.length})
         </button>
       </div>
-
-      {/* Agent Control Panel */}
-      {showAgentPanel && (
-        <AgentControlPanel agentStatus={agentStatus} controlAgent={controlAgent} />
-      )}
 
       {/* Event Feed */}
       <div ref={feedRef} style={{
@@ -843,103 +825,6 @@ function TextReportBar({ sendReport, role }) {
       }}>
         <PaperAirplaneIcon style={{ width: 14, height: 14 }} />
       </button>
-    </div>
-  )
-}
-
-// ── Agent Control Panel (kill / revive for resilience demo) ──────────────
-
-const AGENTS = [
-  { id: 'OPS',     domain: 'SORTIE',      Icon: PaperAirplaneIcon, label: 'OPS — Sortie Ops' },
-  { id: 'FUEL',    domain: 'FUEL',         Icon: BeakerIcon,        label: 'FUEL — Fuel Mgmt' },
-  { id: 'ARMING',  domain: 'ARMING',       Icon: BoltIcon,          label: 'ARMING — Ordnance' },
-  { id: 'MAINT',   domain: 'MAINTENANCE',  Icon: WrenchScrewdriverIcon, label: 'MAINT — Maintenance' },
-  { id: 'THREAT',  domain: 'THREAT',       Icon: EyeIcon,           label: 'THREAT — Intel' },
-]
-
-function AgentControlPanel({ agentStatus, controlAgent }) {
-  const [busy, setBusy] = useState(null)
-
-  const handleToggle = async (agentId, isOnline) => {
-    setBusy(agentId)
-    const action = isOnline ? 'kill_agent' : 'revive_agent'
-    await controlAgent(action, agentId)
-    // Status will update via WS events (AGENT_ONLINE / AGENT_OFFLINE)
-    setTimeout(() => setBusy(null), 600)
-  }
-
-  return (
-    <div style={{
-      flexShrink: 0, padding: '8px 10px',
-      borderBottom: `1px solid rgba(255,255,255,0.05)`,
-      background: `${C.surfaceCard}`,
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
-      }}>
-        <CommandLineIcon style={{ width: 12, height: 12, color: C.accent }} />
-        <span style={{
-          fontSize: 9, fontWeight: 700, letterSpacing: '0.15em',
-          textTransform: 'uppercase', color: C.accent,
-        }}>Agent Control — Resilience Demo</span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {AGENTS.map(agent => {
-          const isOnline = agentStatus[agent.id] === 'online'
-          const isLoading = busy === agent.id
-          const statusColor = isOnline ? C.green : C.red
-
-          return (
-            <div key={agent.id} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 10px',
-              background: C.surfacePrimary,
-              border: `1px solid rgba(255,255,255,0.06)`,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <StatusDot color={statusColor} pulse={isOnline} />
-                <agent.Icon style={{ width: 14, height: 14, color: isOnline ? C.accent : C.textDim }} />
-                <div>
-                  <div style={{
-                    fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
-                    color: isOnline ? C.textPrimary : C.textDim,
-                  }}>{agent.id}</div>
-                  <div style={{ fontSize: 8, color: C.textDim }}>{agent.domain}</div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => handleToggle(agent.id, isOnline)}
-                disabled={isLoading}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '6px 12px',
-                  background: isOnline ? `${C.red}18` : `${C.green}18`,
-                  border: `1px solid ${isOnline ? C.red : C.green}44`,
-                  color: isOnline ? C.red : C.green,
-                  fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-                  textTransform: 'uppercase', cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  opacity: isLoading ? 0.5 : 1,
-                }}
-              >
-                {isOnline
-                  ? <><StopIcon style={{ width: 12, height: 12 }} /> Kill</>
-                  : <><PlayIcon style={{ width: 12, height: 12 }} /> Revive</>
-                }
-              </button>
-            </div>
-          )
-        })}
-      </div>
-
-      <div style={{
-        fontSize: 8, color: C.textDim, marginTop: 6, letterSpacing: '0.05em',
-        textAlign: 'center', lineHeight: 1.5,
-      }}>
-        Kill an agent to simulate failure — watch others compensate autonomously
-      </div>
     </div>
   )
 }

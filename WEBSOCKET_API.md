@@ -14,9 +14,10 @@
 5. [Agent IDs & Domains](#5-agent-ids--domains)
 6. [World State Object](#6-world-state-object)
 7. [Deriving UI State](#7-deriving-ui-state-from-events)
-8. [Scenarios](#8-scenarios)
-9. [Reference Implementation (React)](#9-reference-implementation-react)
-10. [TypeScript Types](#10-typescript-types)
+8. [HTTP API (REST)](#8-http-api-rest)
+9. [Scenarios](#9-scenarios)
+10. [Reference Implementation (React)](#10-reference-implementation-react)
+11. [TypeScript Types](#11-typescript-types)
 
 ---
 
@@ -405,7 +406,204 @@ const worldState = events
 
 ---
 
-## 8. Scenarios
+## 8. HTTP API (REST)
+
+> **Live endpoint:** `https://macs-airbase.duckdns.org/api`
+> **Local dev:** `http://localhost:8080`
+
+All endpoints support CORS. All responses are JSON.
+
+### 8a. GET /api/agents — Agent Status
+
+Returns live status of all 5 SAU agents.
+
+```bash
+GET https://macs-airbase.duckdns.org/api/agents
+```
+
+**Response:**
+
+```json
+{
+  "agents": {
+    "OPS": {
+      "status": "online",
+      "alive": true,
+      "last_active": 1710412345.678,
+      "seconds_since_action": 8.2
+    },
+    "FUEL": {
+      "status": "offline",
+      "alive": false,
+      "last_active": 1710412300.0,
+      "seconds_since_action": 53.9
+    }
+  }
+}
+```
+
+### 8b. POST /api/control — Kill / Revive Agent (Resilience Demo)
+
+Kill an agent to simulate failure. Other agents detect the gap and compensate autonomously. Revive to bring it back.
+
+**Kill an agent:**
+
+```bash
+POST https://macs-airbase.duckdns.org/api/control
+Content-Type: application/json
+
+{ "action": "kill_agent", "agent_id": "FUEL" }
+```
+
+**Response:**
+
+```json
+{ "ok": true, "killed": "FUEL" }
+```
+
+If already offline: `{ "ok": true, "note": "FUEL already offline" }`
+
+**Revive an agent:**
+
+```bash
+POST https://macs-airbase.duckdns.org/api/control
+Content-Type: application/json
+
+{ "action": "revive_agent", "agent_id": "FUEL" }
+```
+
+**Response:**
+
+```json
+{ "ok": true, "revived": "FUEL" }
+```
+
+If already online: `{ "ok": true, "note": "FUEL already online" }`
+
+**Valid agent IDs:** `OPS`, `FUEL`, `ARMING`, `MAINT`, `THREAT`
+
+**What happens after kill/revive:**
+1. The agent's reasoning loop stops/starts immediately
+2. An `AGENT_OFFLINE` or `AGENT_ONLINE` event is posted to the bulletin board
+3. That event broadcasts over WebSocket to all connected clients
+4. Remaining agents detect the gap within their next tick (~12s) and start compensating
+
+**Error (invalid agent):**
+
+```json
+{ "ok": false, "error": "Unknown agent: FOO", "valid": ["OPS", "FUEL", "ARMING", "MAINT", "THREAT"] }
+```
+
+### 8c. POST /api/control — Inject Event
+
+Inject a custom event into the bulletin board (e.g. from a voice agent).
+
+```bash
+POST https://macs-airbase.duckdns.org/api/control
+Content-Type: application/json
+
+{
+  "action": "inject_event",
+  "event_type": "SCENARIO_EVENT",
+  "domain": "THREAT",
+  "severity": "HIGH",
+  "message": "Voice report: hostile drone spotted over sector 4"
+}
+```
+
+**Response:**
+
+```json
+{ "ok": true, "event_id": "EVT-00123" }
+```
+
+### 8d. GET /api/events — Query Events
+
+```bash
+GET https://macs-airbase.duckdns.org/api/events?limit=20&domain=THREAT&type=ACTION_TAKEN
+```
+
+| Param    | Default | Description |
+|----------|---------|-------------|
+| `limit`  | `20`    | Max events to return (capped at 200) |
+| `domain` | —       | Filter by domain: `SORTIE`, `FUEL`, `ARMING`, `MAINTENANCE`, `THREAT`, `SYSTEM` |
+| `type`   | —       | Filter by event_type: `ACTION_TAKEN`, `AGENT_OFFLINE`, etc. |
+
+**Response:**
+
+```json
+{
+  "events": [ Event, Event, ... ],
+  "count": 20
+}
+```
+
+### 8e. GET /api/status — World State Snapshot
+
+Returns the current operational picture (same data as `WORLD_STATE_UPDATE` events).
+
+```bash
+GET https://macs-airbase.duckdns.org/api/status
+```
+
+**Response:** See [§6 World State Object](#6-world-state-object) for the full schema.
+
+### 8f. GET /api/health — Health Check
+
+```bash
+GET https://macs-airbase.duckdns.org/api/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "agents_alive": 5,
+  "agents_total": 5,
+  "events": 342
+}
+```
+
+### TypeScript — Control API Types
+
+```typescript
+// Kill / Revive
+type ControlAction =
+  | { action: 'kill_agent'; agent_id: AgentId }
+  | { action: 'revive_agent'; agent_id: AgentId }
+  | { action: 'inject_event'; event_type?: string; domain?: string; severity?: string; message: string }
+
+interface ControlResponse {
+  ok: boolean
+  killed?: AgentId
+  revived?: AgentId
+  event_id?: string
+  note?: string
+  error?: string
+  valid?: AgentId[]
+}
+
+interface AgentsResponse {
+  agents: Record<AgentId, {
+    status: string
+    alive: boolean
+    last_active: number | null
+    seconds_since_action: number | null
+  }>
+}
+
+interface HealthResponse {
+  status: 'ok'
+  agents_alive: number
+  agents_total: number
+  events: number
+}
+```
+
+---
+
+## 9. Scenarios
 
 Three built-in scenarios. The backend runs one at a time.
 
@@ -419,7 +617,7 @@ The scenario name is provided in the `SCENARIO_START` event payload.
 
 ---
 
-## 9. Reference Implementation (React)
+## 10. Reference Implementation (React)
 
 Minimal hook that gives you everything:
 
@@ -540,7 +738,7 @@ function Dashboard() {
 
 ---
 
-## 10. TypeScript Types
+## 11. TypeScript Types
 
 Copy these into your Lovable project:
 
