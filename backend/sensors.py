@@ -40,28 +40,28 @@ class SensorConfig:
         self.scenario = scenario
 
         # Radar — how often tracks appear, base probability
-        self.radar_interval = 20       # seconds between radar sweeps
+        self.radar_interval = 45       # seconds between radar sweeps
         self.radar_track_prob = 0.3    # prob of new track per sweep
         self.radar_hostile_prob = 0.15 # prob a new track is hostile
 
         # Fuel gauges — telemetry interval
-        self.fuel_interval = 30
+        self.fuel_interval = 60
         self.fuel_drain_rate = 0.4     # % per interval (base ops)
 
         # Weather — update interval
-        self.weather_interval = 60
+        self.weather_interval = 120
         self.weather_degrade_prob = 0.1
 
         # EW — electronic warfare detection
-        self.ew_interval = 25
+        self.ew_interval = 50
         self.ew_jamming_prob = 0.08
 
         # Perimeter — motion/acoustic sensors
-        self.perimeter_interval = 15
+        self.perimeter_interval = 35
         self.perimeter_alert_prob = 0.05
 
         # Aircraft telemetry — per-aircraft status updates
-        self.aircraft_interval = 15
+        self.aircraft_interval = 30
         self.aircraft_count = 6
 
         # Scenario-specific tuning

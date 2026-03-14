@@ -226,7 +226,7 @@ class SAU(ABC):
         self,
         agent_id: str,
         domain: str,
-        tick_interval: float = 5.0,
+        tick_interval: float = 12.0,
         mock_mode: bool = False,
         anthropic_api_key: str = None,
         google_api_key: str = None,

@@ -47,7 +47,7 @@ SCENARIOS = {
                 tags=["tasking", "surge", "cascade-trigger"],
             ),
             ScenarioEvent(
-                delay=8,
+                delay=25,
                 event_type="FUEL_LOW",
                 domain="FUEL",
                 severity="HIGH",
@@ -62,7 +62,7 @@ SCENARIOS = {
                 tags=["fuel-low", "surge"],
             ),
             ScenarioEvent(
-                delay=18,
+                delay=60,
                 event_type="AIRCRAFT_GROUNDED",
                 domain="MAINTENANCE",
                 severity="HIGH",
@@ -77,7 +77,7 @@ SCENARIOS = {
                 tags=["aircraft-grounded", "hydraulic", "surge"],
             ),
             ScenarioEvent(
-                delay=30,
+                delay=100,
                 event_type="ORDNANCE_DEMAND",
                 domain="ARMING",
                 severity="HIGH",
@@ -92,7 +92,7 @@ SCENARIOS = {
                 tags=["ordnance-reconfig", "surge"],
             ),
             ScenarioEvent(
-                delay=45,
+                delay=150,
                 event_type="THREAT_UPDATE",
                 domain="THREAT",
                 severity="AMBER",
@@ -109,7 +109,7 @@ SCENARIOS = {
                 tags=["radar-track", "unknown-track", "surge"],
             ),
             ScenarioEvent(
-                delay=60,
+                delay=210,
                 event_type="FUEL_RESUPPLY_UPDATE",
                 domain="FUEL",
                 severity="HIGH",
@@ -123,7 +123,7 @@ SCENARIOS = {
                 tags=["fuel-delay", "convoy", "surge"],
             ),
             ScenarioEvent(
-                delay=80,
+                delay=300,
                 event_type="MAINTENANCE_COMPLETE",
                 domain="MAINTENANCE",
                 severity="INFO",
@@ -165,7 +165,7 @@ SCENARIOS = {
                 tags=["radar-contact", "cascade-trigger"],
             ),
             ScenarioEvent(
-                delay=10,
+                delay=30,
                 event_type="THREAT_ESCALATION",
                 domain="THREAT",
                 severity="CRITICAL",
@@ -180,7 +180,7 @@ SCENARIOS = {
                 tags=["threat-red", "ew-detection", "scramble"],
             ),
             ScenarioEvent(
-                delay=15,
+                delay=50,
                 event_type="SCRAMBLE_ORDER",
                 domain="SORTIE",
                 severity="CRITICAL",
@@ -195,7 +195,7 @@ SCENARIOS = {
                 tags=["scramble", "cap"],
             ),
             ScenarioEvent(
-                delay=20,
+                delay=70,
                 event_type="ARMING_STATUS",
                 domain="ARMING",
                 severity="HIGH",
@@ -208,7 +208,7 @@ SCENARIOS = {
                 tags=["arming-status", "scramble"],
             ),
             ScenarioEvent(
-                delay=30,
+                delay=100,
                 event_type="EW_JAMMING",
                 domain="THREAT",
                 severity="CRITICAL",
@@ -222,7 +222,7 @@ SCENARIOS = {
                 tags=["ew-jamming", "radar-degraded"],
             ),
             ScenarioEvent(
-                delay=45,
+                delay=150,
                 event_type="INTERCEPT_UPDATE",
                 domain="SORTIE",
                 severity="HIGH",
@@ -237,7 +237,7 @@ SCENARIOS = {
                 tags=["intercept", "scramble"],
             ),
             ScenarioEvent(
-                delay=65,
+                delay=210,
                 event_type="THREAT_RESOLVED",
                 domain="THREAT",
                 severity="INFO",
@@ -278,7 +278,7 @@ SCENARIOS = {
                 tags=["dispersal", "cascade-trigger"],
             ),
             ScenarioEvent(
-                delay=8,
+                delay=25,
                 event_type="FUEL_CONSTRAINT",
                 domain="FUEL",
                 severity="HIGH",
@@ -294,7 +294,7 @@ SCENARIOS = {
                 tags=["fuel-constraint", "dispersal"],
             ),
             ScenarioEvent(
-                delay=15,
+                delay=55,
                 event_type="ORDNANCE_DECISION",
                 domain="ARMING",
                 severity="HIGH",
@@ -309,7 +309,7 @@ SCENARIOS = {
                 tags=["ordnance-decision", "dispersal"],
             ),
             ScenarioEvent(
-                delay=22,
+                delay=80,
                 event_type="COMMS_DEGRADED",
                 domain="THREAT",
                 severity="HIGH",
@@ -324,7 +324,7 @@ SCENARIOS = {
                 tags=["comms-degraded", "dispersal"],
             ),
             ScenarioEvent(
-                delay=30,
+                delay=120,
                 event_type="AIRCRAFT_SERVICEABILITY",
                 domain="MAINTENANCE",
                 severity="HIGH",
@@ -339,7 +339,7 @@ SCENARIOS = {
                 tags=["aircraft-fault", "dispersal"],
             ),
             ScenarioEvent(
-                delay=40,
+                delay=180,
                 event_type="DISPERSAL_STATUS",
                 domain="SORTIE",
                 severity="HIGH",
@@ -355,7 +355,7 @@ SCENARIOS = {
                 tags=["dispersal-status"],
             ),
             ScenarioEvent(
-                delay=60,
+                delay=270,
                 event_type="THREAT_PROXIMITY",
                 domain="THREAT",
                 severity="CRITICAL",
