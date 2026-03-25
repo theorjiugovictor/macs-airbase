@@ -196,6 +196,13 @@ class WorldStateManager:
         if event.event_type == "SCRAMBLE_ORDER":
             launched = len(p.get("aircraft", []))
             s.aircraft_airborne = min(s.aircraft_serviceable, s.aircraft_airborne + launched)
+        if event.event_type == "RECALL_ORDER":
+            # Recall — all airborne aircraft RTB
+            recalled = len(p.get("aircraft", []))
+            if recalled == 0:
+                s.aircraft_airborne = 0  # recall all
+            else:
+                s.aircraft_airborne = max(0, s.aircraft_airborne - recalled)
         if event.event_type == "INTERCEPT_UPDATE":
             pass  # status only
 

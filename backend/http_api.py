@@ -119,6 +119,97 @@ async def post_control(request):
         _agent_map[aid].start()
         return web.json_response({"ok": True, "revived": aid})
 
+    elif action == "scramble":
+        # UI-triggered scramble — post SCRAMBLE_ORDER event to the bulletin
+        aircraft = data.get("aircraft", [])
+        if not aircraft:
+            # Default: scramble ready aircraft from world state
+            if _world_state_mgr:
+                registry = _world_state_mgr.state.aircraft_registry
+                aircraft = [
+                    ac_id for ac_id, ac in registry.items()
+                    if ac.get("serviceable") and ac.get("fuel_pct", 0) > 40
+                    and ac.get("phase") not in ("GROUNDED", "AIRBORNE", "TAKEOFF")
+                ]
+            if not aircraft:
+                aircraft = ["Gripen-01", "Gripen-02"]  # fallback pair
+        bearing = data.get("bearing", 45)
+        roe = data.get("roe", "WEAPONS_HOLD")
+        event = bulletin.post(
+            source="COMMAND",
+            event_type="SCRAMBLE_ORDER",
+            domain="SORTIE",
+            severity="CRITICAL",
+            payload={
+                "message": f"SCRAMBLE SCRAMBLE SCRAMBLE. {len(aircraft)} aircraft immediate launch. "
+                           f"Vector bearing {bearing:03d}. ROE: {roe}.",
+                "aircraft": aircraft,
+                "vector_bearing": bearing,
+                "roe": roe,
+                "ordered_by": data.get("ordered_by", "UI_COMMAND"),
+            },
+            tags=["scramble", "command"],
+            source_layer="SYSTEM",
+        )
+        return web.json_response({"ok": True, "event_id": event.id,
+                                   "aircraft": aircraft, "count": len(aircraft)})
+
+    elif action == "recall":
+        # Recall aircraft — post RECALL_ORDER
+        aircraft = data.get("aircraft", [])
+        reason = data.get("reason", "Command recall order")
+        event = bulletin.post(
+            source="COMMAND",
+            event_type="RECALL_ORDER",
+            domain="SORTIE",
+            severity="HIGH",
+            payload={
+                "message": f"RECALL ORDER. {reason}. All airborne aircraft RTB immediately.",
+                "aircraft": aircraft,
+                "reason": reason,
+                "ordered_by": data.get("ordered_by", "UI_COMMAND"),
+            },
+            tags=["recall", "command"],
+            source_layer="SYSTEM",
+        )
+        return web.json_response({"ok": True, "event_id": event.id})
+
+    elif action == "threat_update":
+        # Manual threat level change from UI
+        level = data.get("level", "AMBER").upper()
+        if level not in ("GREEN", "AMBER", "RED"):
+            return web.json_response(
+                {"ok": False, "error": f"Invalid threat level: {level}"}, status=400)
+        event = bulletin.post(
+            source="COMMAND",
+            event_type="THREAT_UPDATE",
+            domain="THREAT",
+            severity="CRITICAL" if level == "RED" else "HIGH" if level == "AMBER" else "INFO",
+            payload={
+                "message": f"Threat level updated to {level} by command authority.",
+                "threat_level": level,
+                "ordered_by": data.get("ordered_by", "UI_COMMAND"),
+            },
+            tags=["threat-update", "command"],
+            source_layer="SYSTEM",
+        )
+        return web.json_response({"ok": True, "event_id": event.id, "level": level})
+
+    elif action == "switch_scenario":
+        scenario_key = data.get("scenario", "").lower()
+        from scenarios import SCENARIOS, ScenarioRunner
+        if scenario_key not in SCENARIOS:
+            return web.json_response(
+                {"ok": False, "error": f"Unknown scenario: {scenario_key}",
+                 "valid": list(SCENARIOS.keys())}, status=400)
+        # Stop existing runner if any, start new one
+        runner = ScenarioRunner(scenario_key)
+        runner.start()
+        if _world_state_mgr:
+            _world_state_mgr.state.scenario = scenario_key
+        return web.json_response({"ok": True, "scenario": scenario_key,
+                                   "name": SCENARIOS[scenario_key]["name"]})
+
     return web.json_response(
         {"ok": False, "error": f"Unknown action: {action}"}, status=400)
 
@@ -244,6 +335,24 @@ async def get_missions(request):
     return web.json_response({"missions": missions})
 
 
+async def get_world_state(request):
+    """GET /world-state — full world state including aircraft registry."""
+    if _world_state_mgr is None:
+        return web.json_response({"error": "not ready"}, status=503)
+    return web.json_response(_world_state_mgr.snapshot())
+
+
+async def get_scenarios(request):
+    """GET /scenarios — list available scenarios."""
+    from scenarios import SCENARIOS
+    result = {}
+    for key, sc in SCENARIOS.items():
+        result[key] = {"name": sc["name"], "description": sc["description"],
+                        "event_count": len(sc["events"])}
+    current = _world_state_mgr.state.scenario if _world_state_mgr else "unknown"
+    return web.json_response({"scenarios": result, "current": current})
+
+
 async def post_missions(request):
     try:
         data = await request.json()
@@ -293,6 +402,8 @@ def start_http_api(agent_map, world_state_mgr, port=8080):
     app.router.add_post("/control", post_control)
     app.router.add_get("/health", get_health)
     app.router.add_get("/summary", get_summary)
+    app.router.add_get("/world-state", get_world_state)
+    app.router.add_get("/scenarios", get_scenarios)
     app.router.add_get("/missions", get_missions)
     app.router.add_post("/missions", post_missions)
 
