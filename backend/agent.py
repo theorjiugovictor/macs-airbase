@@ -55,7 +55,7 @@ except ImportError:
     _OPENAI_AVAILABLE = False
 
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
 
 
