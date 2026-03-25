@@ -246,22 +246,29 @@ class SAU(ABC):
         self._client  = None  # Anthropic
         self._gclient = None  # Gemini
         self._orclient = None  # OpenRouter (OpenAI-compatible)
+        self._last_reasoning: dict = {}  # last reasoning context for transparency
 
         if not mock_mode:
+            # Initialize ALL available clients — fallback chain uses them in order
             if google_api_key and _GOOGLE_AVAILABLE:
                 self._gclient = google_genai.Client(api_key=google_api_key)
-                logger.info(f"[{agent_id}] using Gemini model: {GEMINI_MODEL}")
-            elif openrouter_api_key and _OPENAI_AVAILABLE:
+                logger.info(f"[{agent_id}] Gemini available (model: {GEMINI_MODEL})")
+            if openrouter_api_key and _OPENAI_AVAILABLE:
                 self._orclient = _OpenAI(
                     base_url="https://openrouter.ai/api/v1",
                     api_key=openrouter_api_key,
                 )
-                logger.info(f"[{agent_id}] using OpenRouter model: {OPENROUTER_MODEL}")
-            elif anthropic_api_key and _ANTHROPIC_AVAILABLE:
+                logger.info(f"[{agent_id}] OpenRouter available (model: {OPENROUTER_MODEL})")
+            if anthropic_api_key and _ANTHROPIC_AVAILABLE:
                 self._client = anthropic.Anthropic(api_key=anthropic_api_key)
-                logger.info(f"[{agent_id}] using Claude")
+                logger.info(f"[{agent_id}] Claude available")
 
     # ── Abstract interface ───────────────────────────────────────────────────
+
+    @property
+    def last_reasoning(self) -> dict:
+        """Return last reasoning context for transparency API."""
+        return self._last_reasoning
 
     @property
     @abstractmethod
@@ -346,7 +353,7 @@ class SAU(ABC):
         decision = self._reason(context, relevant)
 
         if decision and decision.get("action"):
-            self._act(decision)
+            self._act(decision, relevant_events=relevant, context_snapshot=context)
             self._last_act_time = time.time()
             self._consecutive_idle = 0
         else:
@@ -367,6 +374,7 @@ class SAU(ABC):
                 or e.event_type == "FIELD_REPORT"   # human intelligence
                 or e.event_type == "AGENT_OFFLINE"
                 or e.event_type == "ACTION_TAKEN"
+                or e.event_type == "AGENT_COMPENSATION"
                 or e.source == "MISSION_CONTROL"   # standing orders
             )
         ]
@@ -399,14 +407,52 @@ class SAU(ABC):
         }, indent=2)
 
     def _reason(self, context: str, relevant_events: list) -> Optional[dict]:
-        """Route to Gemini, OpenRouter, Claude, or mock depending on what's configured."""
+        """Route through fallback chain: Gemini → OpenRouter → Claude → mock."""
+        result = None
+        provider = "mock"
+
+        # Try Gemini first
         if self._gclient:
-            return self._gemini_reason(context, relevant_events)
-        if self._orclient:
-            return self._openrouter_reason(context, relevant_events)
-        if self._client:
-            return self._claude_reason(context, relevant_events)
-        return self._mock_reason(relevant_events)
+            result = self._gemini_reason(context, relevant_events)
+            if result is not None:
+                provider = "gemini"
+
+        # Try OpenRouter
+        if result is None and self._orclient:
+            result = self._openrouter_reason(context, relevant_events)
+            if result is not None:
+                provider = "openrouter"
+
+        # Try Claude
+        if result is None and self._client:
+            result = self._claude_reason(context, relevant_events)
+            if result is not None:
+                provider = "claude"
+
+        # Final fallback: mock
+        if result is None:
+            result = self._mock_reason(relevant_events)
+            provider = "mock"
+
+        # Tag the result with actual provider used
+        if result:
+            result["_provider"] = provider
+
+        # Capture reasoning context for transparency
+        self._last_reasoning = {
+            "timestamp": time.time(),
+            "agent_id": self.agent_id,
+            "input_event_ids": [e.id for e in relevant_events] if relevant_events else [],
+            "input_event_summaries": [
+                {"id": e.id, "type": e.event_type, "source": e.source,
+                 "domain": e.domain, "severity": e.severity,
+                 "message": e.payload.get("message", "")[:120]}
+                for e in (relevant_events or [])
+            ][:10],
+            "decision": result,
+            "acted": bool(result and result.get("action")),
+        }
+        return result
 
     def _build_user_prompt(self, context: str, relevant_events: list) -> str:
         agent_status = bulletin.agent_status()
@@ -492,6 +538,15 @@ If acting:
   "directed_to": ["pad_crew", "convoy", "security", "pilot"],
   "details": {{}}
 }}
+If compensating for a downed SAU:
+{{
+  "action": true,
+  "event_type": "AGENT_COMPENSATION",
+  "severity": "HIGH",
+  "message": "what you are doing to cover the offline SAU's responsibilities",
+  "references": ["EVT-XXXXX"],
+  "details": {{"compensating_for": "SAU_NAME", "compensation_type": "gap_coverage"}}
+}}
 The "directed_to" field is OPTIONAL — include it when your action is relevant to
 specific field roles (pad_crew, convoy, security, pilot, hq). This sends your
 action directly to their mobile devices.
@@ -502,7 +557,7 @@ If no action needed:
 Respond ONLY with valid JSON. No markdown."""
 
     def _gemini_reason(self, context: str, relevant_events: list) -> Optional[dict]:
-        """Reason using Gemini."""
+        """Reason using Gemini. Returns None on failure so the fallback chain continues."""
         user_prompt = self._build_user_prompt(context, relevant_events)
         try:
             response = self._gclient.models.generate_content(
@@ -516,11 +571,11 @@ Respond ONLY with valid JSON. No markdown."""
             )
             return json.loads(response.text)
         except Exception as e:
-            logger.warning(f"[{self.agent_id}] Gemini error: {e} — using mock")
-            return self._mock_reason(relevant_events)
+            logger.warning(f"[{self.agent_id}] Gemini error: {e} — trying next in chain")
+            return None
 
     def _openrouter_reason(self, context: str, relevant_events: list) -> Optional[dict]:
-        """Reason using OpenRouter (OpenAI-compatible API)."""
+        """Reason using OpenRouter (OpenAI-compatible API). Returns None on failure."""
         user_prompt = self._build_user_prompt(context, relevant_events)
         try:
             response = self._orclient.chat.completions.create(
@@ -543,11 +598,11 @@ Respond ONLY with valid JSON. No markdown."""
                     text = text[4:]
             return json.loads(text)
         except Exception as e:
-            logger.warning(f"[{self.agent_id}] OpenRouter error: {e} — using mock")
-            return self._mock_reason(relevant_events)
+            logger.warning(f"[{self.agent_id}] OpenRouter error: {e} — trying next in chain")
+            return None
 
     def _claude_reason(self, context: str, relevant_events: list) -> Optional[dict]:
-        """Reason using Claude (Anthropic)."""
+        """Reason using Claude (Anthropic). Returns None on failure."""
         user_prompt = self._build_user_prompt(context, relevant_events)
         try:
             response = self._client.messages.create(
@@ -563,8 +618,8 @@ Respond ONLY with valid JSON. No markdown."""
                     text = text[4:]
             return json.loads(text)
         except Exception as e:
-            logger.warning(f"[{self.agent_id}] Claude error: {e} — using mock")
-            return self._mock_reason(relevant_events)
+            logger.warning(f"[{self.agent_id}] Claude error: {e} — trying next in chain")
+            return None
 
     def _mock_reason(self, relevant_events: list = None) -> Optional[dict]:
         """Return a context-aware scripted response for demo/testing.
@@ -584,10 +639,14 @@ Respond ONLY with valid JSON. No markdown."""
                         self._mock_response_index += 1
                         return {
                             "action": True,
-                            "event_type": "ACTION_TAKEN",
+                            "event_type": "AGENT_COMPENSATION",
                             "severity": "HIGH",
                             "message": gap_msg,
-                            "details": {"mock": True, "compensating_for": e.source},
+                            "details": {
+                                "mock": True,
+                                "compensating_for": e.source,
+                                "compensation_type": "gap_coverage",
+                            },
                             "references": [e.id],
                         }
 
@@ -630,8 +689,8 @@ Respond ONLY with valid JSON. No markdown."""
             "details": {"mock": True},
         }
 
-    def _act(self, decision: dict):
-        """Post the decision to the bulletin board."""
+    def _act(self, decision: dict, relevant_events: list = None, context_snapshot: str = None):
+        """Post the decision to the bulletin board with full reasoning context."""
         if not decision.get("action"):
             return
 
@@ -643,15 +702,32 @@ Respond ONLY with valid JSON. No markdown."""
         if refs:
             payload["references"] = refs
 
-        # Determine reasoning source: gemini, openrouter, claude, or mock
-        if self._gclient and not decision.get("details", {}).get("mock"):
-            mode = "gemini"
-        elif self._orclient and not decision.get("details", {}).get("mock"):
-            mode = "openrouter"
-        elif self._client and not decision.get("details", {}).get("mock"):
-            mode = "claude"
-        else:
-            mode = "mock"
+        # Use the actual provider that produced this decision
+        mode = decision.pop("_provider", "mock")
+
+        # ── Reasoning transparency: attach what triggered this decision ──
+        reasoning_ctx = {
+            "mode": mode,
+            "trigger_event_ids": [e.id for e in (relevant_events or [])],
+            "trigger_summaries": [
+                {"id": e.id, "type": e.event_type, "source": e.source,
+                 "domain": e.domain, "message": e.payload.get("message", "")[:100]}
+                for e in (relevant_events or [])
+            ][:8],
+        }
+        # Include active missions that influenced the decision
+        try:
+            from mission_board import mission_board
+            active = mission_board.get_active()
+            if active:
+                reasoning_ctx["active_missions"] = [
+                    {"id": m.id, "name": m.name, "priority": m.priority,
+                     "domain": m.domain or "ALL"}
+                    for m in active
+                ][:5]
+        except Exception:
+            pass
+        payload["reasoning_context"] = reasoning_ctx
 
         # Directed actions — tell specific field roles about this
         directed_to = decision.get("directed_to", [])

@@ -156,6 +156,81 @@ class BulletinBoard:
             events = events[-limit:]
         return events
 
+    # ── Causal chain helpers ─────────────────────────────────────────────────
+
+    def find_by_id(self, event_id: str) -> Optional[Event]:
+        """Find a single event by its ID."""
+        with self._lock:
+            for e in reversed(self._events):  # reverse for recency bias
+                if e.id == event_id:
+                    return e
+        return None
+
+    def find_referencing(self, event_id: str) -> list[Event]:
+        """Find all events whose payload.references include the given event ID.
+        Used to walk downstream in a causal chain."""
+        with self._lock:
+            results = []
+            for e in self._events:
+                refs = e.payload.get("references", [])
+                if event_id in refs:
+                    results.append(e)
+            return results
+
+    def build_causal_chain(self, event_id: str) -> dict:
+        """Walk the causal chain for an event: upstream triggers + downstream reactions.
+        Returns {"event": {...}, "upstream": [...], "downstream": [...]}"""
+        root = self.find_by_id(event_id)
+        if not root:
+            return {"error": f"Event {event_id} not found"}
+
+        from dataclasses import asdict
+
+        # Walk upstream: follow references in this event's payload
+        upstream = []
+        seen_up = set()
+        refs_to_walk = list(root.payload.get("references", []))
+        # Also check reasoning_context.trigger_event_ids
+        rc = root.payload.get("reasoning_context", {})
+        refs_to_walk.extend(rc.get("trigger_event_ids", []))
+        refs_to_walk = list(dict.fromkeys(refs_to_walk))  # deduplicate, preserve order
+
+        while refs_to_walk:
+            ref_id = refs_to_walk.pop(0)
+            if ref_id in seen_up:
+                continue
+            seen_up.add(ref_id)
+            ref_event = self.find_by_id(ref_id)
+            if ref_event:
+                upstream.append(asdict(ref_event))
+                # Continue walking upstream
+                parent_refs = ref_event.payload.get("references", [])
+                parent_rc = ref_event.payload.get("reasoning_context", {})
+                parent_refs.extend(parent_rc.get("trigger_event_ids", []))
+                for pr in parent_refs:
+                    if pr not in seen_up:
+                        refs_to_walk.append(pr)
+
+        # Walk downstream: find events referencing this event
+        downstream = []
+        seen_down = {event_id}
+        to_walk = [event_id]
+        while to_walk:
+            eid = to_walk.pop(0)
+            children = self.find_referencing(eid)
+            for child in children:
+                if child.id not in seen_down:
+                    seen_down.add(child.id)
+                    downstream.append(asdict(child))
+                    to_walk.append(child.id)
+
+        return {
+            "event": asdict(root),
+            "upstream": upstream,
+            "downstream": downstream,
+            "chain_length": 1 + len(upstream) + len(downstream),
+        }
+
     # ── Subscription / broadcast ─────────────────────────────────────────────
 
     def subscribe(self, callback):

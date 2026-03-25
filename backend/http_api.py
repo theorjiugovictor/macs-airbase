@@ -133,6 +133,111 @@ async def get_health(request):
     })
 
 
+# ── Reasoning transparency ───────────────────────────────────────────────────
+
+async def get_agent_reasoning(request):
+    """GET /agents/{aid}/reasoning — last reasoning context for transparency."""
+    aid = request.match_info["aid"].upper()
+    if aid not in _agent_map:
+        return web.json_response(
+            {"error": f"Unknown agent: {aid}", "valid": list(_agent_map.keys())},
+            status=404)
+    agent = _agent_map[aid]
+    reasoning = agent.last_reasoning
+    if not reasoning:
+        return web.json_response({"agent_id": aid, "reasoning": None,
+                                   "note": "No reasoning captured yet"})
+    return web.json_response({"agent_id": aid, "reasoning": reasoning})
+
+
+# ── Causal chain ─────────────────────────────────────────────────────────────
+
+async def get_event_chain(request):
+    """GET /events/{eid}/chain — walk upstream triggers + downstream reactions."""
+    eid = request.match_info["eid"]
+    chain = bulletin.build_causal_chain(eid)
+    return web.json_response(chain)
+
+
+# ── Aggregated summary ───────────────────────────────────────────────────────
+
+async def get_summary(request):
+    """GET /summary — aggregated domain status for the Lovable dashboard."""
+    stats = bulletin.stats()
+    agent_status = bulletin.agent_status()
+    last_active = bulletin.domain_last_active()
+    now = time.time()
+
+    # Per-domain breakdown
+    domains = {}
+    for domain in ["SORTIE", "FUEL", "ARMING", "MAINTENANCE", "THREAT"]:
+        domain_events = bulletin.read_domain(domain)
+        recent_5min = [e for e in domain_events if (now - e.timestamp) < 300]
+        recent_30min = [e for e in domain_events if (now - e.timestamp) < 1800]
+        compensations = [e for e in domain_events if e.event_type == "AGENT_COMPENSATION"]
+        domains[domain] = {
+            "total_events": len(domain_events),
+            "events_5min": len(recent_5min),
+            "events_30min": len(recent_30min),
+            "compensations": len(compensations),
+            "last_event_age_s": round(now - domain_events[-1].timestamp) if domain_events else None,
+        }
+
+    # Agent health
+    agents = {}
+    for aid in ["OPS", "FUEL", "ARMING", "MAINT", "THREAT"]:
+        obj = _agent_map.get(aid)
+        agents[aid] = {
+            "status": agent_status.get(aid, "unknown"),
+            "alive": obj.is_alive() if obj else False,
+            "seconds_since_action": (
+                round(now - last_active[aid]) if aid in last_active else None
+            ),
+            "mode": _get_agent_mode(obj) if obj else "unknown",
+        }
+
+    # Mission summary
+    try:
+        active_missions = mission_board.get_active()
+        missions = {
+            "active": len(active_missions),
+            "list": [
+                {"id": m.id, "name": m.name, "priority": m.priority,
+                 "domain": m.domain or "ALL", "status": m.status}
+                for m in active_missions
+            ][:10],
+        }
+    except Exception:
+        missions = {"active": 0, "list": []}
+
+    # Severity breakdown in last 5 minutes
+    all_events = bulletin.read_all()
+    recent_all = [e for e in all_events if (now - e.timestamp) < 300]
+    severity_5min = {}
+    for e in recent_all:
+        severity_5min[e.severity] = severity_5min.get(e.severity, 0) + 1
+
+    return web.json_response({
+        "timestamp": now,
+        "overall": stats,
+        "severity_5min": severity_5min,
+        "domains": domains,
+        "agents": agents,
+        "missions": missions,
+    })
+
+
+def _get_agent_mode(agent) -> str:
+    """Determine what reasoning mode an agent is using."""
+    if hasattr(agent, '_gclient') and agent._gclient:
+        return "gemini"
+    if hasattr(agent, '_orclient') and agent._orclient:
+        return "openrouter"
+    if hasattr(agent, '_client') and agent._client:
+        return "claude"
+    return "mock"
+
+
 async def get_missions(request):
     include_all = request.query.get("all", "").lower() in ("true", "1")
     missions = mission_board.all_missions() if include_all else mission_board.snapshot()
@@ -182,9 +287,12 @@ def start_http_api(agent_map, world_state_mgr, port=8080):
     app = web.Application(middlewares=[cors_middleware])
     app.router.add_get("/status", get_status)
     app.router.add_get("/agents", get_agents)
+    app.router.add_get("/agents/{aid}/reasoning", get_agent_reasoning)
     app.router.add_get("/events", get_events)
+    app.router.add_get("/events/{eid}/chain", get_event_chain)
     app.router.add_post("/control", post_control)
     app.router.add_get("/health", get_health)
+    app.router.add_get("/summary", get_summary)
     app.router.add_get("/missions", get_missions)
     app.router.add_post("/missions", post_missions)
 

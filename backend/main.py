@@ -198,12 +198,16 @@ def main():
     openrouter_model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
     if mock_mode:
         mode_str = "Mock"
-    elif google_key:
-        mode_str = f"Live ({GEMINI_MODEL})"
-    elif openrouter_key:
-        mode_str = f"Live (OpenRouter: {openrouter_model})"
     else:
-        mode_str = "Live (Claude)"
+        chain = []
+        if google_key:
+            chain.append(f"Gemini ({GEMINI_MODEL})")
+        if openrouter_key:
+            chain.append(f"OpenRouter ({openrouter_model})")
+        if anthropic_key:
+            chain.append("Claude")
+        chain.append("Mock")  # always last
+        mode_str = "Live — chain: " + " → ".join(chain)
 
     print(f"\n{BOLD}{'='*60}")
     print("  MACS Airbase — Multi-Agent Command System for Smart Air Bases")

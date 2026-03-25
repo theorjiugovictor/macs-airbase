@@ -739,6 +739,135 @@ interface MissionError {
 
 ---
 
+### 8j. GET /api/agents/{aid}/reasoning — Agent Reasoning Transparency
+
+Returns the last reasoning context for a specific agent, showing what events triggered the decision and what the agent considered.
+
+```bash
+curl https://macs-airbase.duckdns.org/api/agents/OPS/reasoning
+```
+
+**Response:**
+```json
+{
+  "agent_id": "OPS",
+  "reasoning": {
+    "timestamp": 1711380000.0,
+    "agent_id": "OPS",
+    "input_event_ids": ["EVT-00042", "EVT-00041"],
+    "input_event_summaries": [
+      { "id": "EVT-00042", "type": "ACTION_TAKEN", "source": "FUEL",
+        "domain": "FUEL", "severity": "HIGH",
+        "message": "Fuel truck Alpha deploying to dispersal pad 3..." }
+    ],
+    "decision": {
+      "action": true,
+      "event_type": "ACTION_TAKEN",
+      "severity": "HIGH",
+      "message": "Sortie surge underway..."
+    },
+    "acted": true
+  }
+}
+```
+
+### 8k. GET /api/events/{eid}/chain — Causal Chain
+
+Walks the full causal chain for an event: upstream triggers (what caused it) and downstream reactions (what it triggered).
+
+```bash
+curl https://macs-airbase.duckdns.org/api/events/EVT-00042/chain
+```
+
+**Response:**
+```json
+{
+  "event": { "id": "EVT-00042", "source": "FUEL", "event_type": "ACTION_TAKEN", "..." : "..." },
+  "upstream": [
+    { "id": "EVT-00038", "source": "SYSTEM", "event_type": "SCENARIO_EVENT", "..." : "..." }
+  ],
+  "downstream": [
+    { "id": "EVT-00045", "source": "OPS", "event_type": "ACTION_TAKEN", "..." : "..." },
+    { "id": "EVT-00047", "source": "ARMING", "event_type": "ACTION_TAKEN", "..." : "..." }
+  ],
+  "chain_length": 4
+}
+```
+
+### 8l. GET /api/summary — Aggregated Status
+
+Returns a comprehensive summary across all domains: per-domain event counts (5min / 30min), agent health, active missions, severity breakdown. Designed for the Lovable dashboard.
+
+```bash
+curl https://macs-airbase.duckdns.org/api/summary
+```
+
+**Response:**
+```json
+{
+  "timestamp": 1711380000.0,
+  "overall": { "total_events": 142, "by_domain": {}, "by_severity": {} },
+  "severity_5min": { "HIGH": 3, "MEDIUM": 5, "LOW": 2 },
+  "domains": {
+    "SORTIE": { "total_events": 28, "events_5min": 3, "events_30min": 12, "compensations": 0, "last_event_age_s": 8 },
+    "FUEL": { "..." : "..." }
+  },
+  "agents": {
+    "OPS": { "status": "online", "alive": true, "seconds_since_action": 12, "mode": "gemini" },
+    "FUEL": { "..." : "..." }
+  },
+  "missions": { "active": 2, "list": [{ "id": "MSN-001", "name": "...", "priority": "HIGH", "domain": "ALL", "status": "active" }] }
+}
+```
+
+### Event Type: AGENT_COMPENSATION
+
+When an agent detects a peer has gone offline, it posts an `AGENT_COMPENSATION` event (distinct from `ACTION_TAKEN`) with structured compensation metadata.
+
+```json
+{
+  "id": "EVT-00055",
+  "source": "OPS",
+  "event_type": "AGENT_COMPENSATION",
+  "domain": "SORTIE",
+  "severity": "HIGH",
+  "source_mode": "mock",
+  "payload": {
+    "message": "FUEL offline — fuel truck coordination lost...",
+    "details": { "compensating_for": "FUEL", "compensation_type": "gap_coverage" },
+    "references": ["EVT-00050"],
+    "reasoning_context": {
+      "mode": "mock",
+      "trigger_event_ids": ["EVT-00050"],
+      "trigger_summaries": [{ "id": "EVT-00050", "type": "AGENT_OFFLINE", "source": "FUEL", "..." : "..." }]
+    }
+  }
+}
+```
+
+### Reasoning Context (payload.reasoning_context)
+
+Every `ACTION_TAKEN` and `AGENT_COMPENSATION` event now includes a `reasoning_context` object in its payload, showing exactly what triggered the agent's decision:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `mode` | string | Which LLM produced the decision: `gemini`, `openrouter`, `claude`, or `mock` |
+| `trigger_event_ids` | string[] | IDs of events that triggered this action |
+| `trigger_summaries` | object[] | Summaries of trigger events (id, type, source, domain, message) |
+| `active_missions` | object[]? | Active missions that influenced the decision |
+
+### LLM Fallback Chain
+
+Agents now support a full fallback chain. If Gemini fails, it tries OpenRouter; if that fails, Claude; if that fails, mock mode. Both `GOOGLE_API_KEY` and `OPENROUTER_API_KEY` can be set simultaneously.
+
+```
+Gemini → OpenRouter → Claude → Mock
+```
+
+The `source_mode` field on every event indicates which provider actually produced the response.
+
+---
+
 ## 9. Scenarios
 
 Three built-in scenarios. The backend runs one at a time.
