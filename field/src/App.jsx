@@ -243,18 +243,7 @@ function RoleSelect({ onSelect, onAbout }) {
 function ReportSheet({ qr, onSend, onClose }) {
   const [text, setText] = useState(qr.template)
   const inputRef = useRef(null)
-  const sheetRef = useRef(null)
-  useEffect(() => {
-    inputRef.current?.focus()
-    // Scroll the textarea into view when virtual keyboard opens
-    const handleResize = () => {
-      requestAnimationFrame(() => {
-        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      })
-    }
-    window.visualViewport?.addEventListener('resize', handleResize)
-    return () => window.visualViewport?.removeEventListener('resize', handleResize)
-  }, [])
+  useEffect(() => { inputRef.current?.focus() }, [])
 
   const handleSend = () => {
     if (!text.trim()) return
@@ -266,17 +255,15 @@ function ReportSheet({ qr, onSend, onClose }) {
 
   return (
     <div style={{
-      position: 'fixed', left: 0, right: 0, bottom: 0, top: 0,
-      background: 'rgba(0,0,0,.75)',
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)',
       display: 'flex', alignItems: 'flex-end', zIndex: 100,
       animation: 'fadeIn 0.15s ease',
     }} onClick={onClose}>
-      <div ref={sheetRef} style={{
+      <div style={{
         width: '100%', background: C.surfaceCard,
         borderTop: `1px solid rgba(255,255,255,0.08)`,
         padding: '14px 14px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
         animation: 'slideUp 0.2s ease',
-        maxHeight: '80dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       }} onClick={e => e.stopPropagation()}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -306,6 +293,7 @@ function ReportSheet({ qr, onSend, onClose }) {
           ref={inputRef}
           value={text}
           onChange={e => setText(e.target.value)}
+          onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
           rows={3}
           style={{
             width: '100%', padding: '10px', background: C.surfacePrimary,
@@ -1104,18 +1092,15 @@ function MissionControlPage({ missions, sendMission, events, connected, callsign
             padding: '10px', background: `${C.accent}06`,
             borderBottom: `1px solid rgba(255,255,255,0.05)`,
             display: 'flex', flexDirection: 'column', gap: 6,
-            maxHeight: '50dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
           }}>
             <input
               type="text" placeholder="Mission name (e.g. Surge Sortie Alpha)"
               value={name} onChange={e => setName(e.target.value)}
-              onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
               style={inputStyle}
             />
             <textarea
               placeholder="Description / standing orders..."
               value={description} onChange={e => setDescription(e.target.value)}
-              onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
               rows={2} style={{ ...inputStyle, resize: 'none', lineHeight: 1.4 }}
             />
             <div style={{ display: 'flex', gap: 5 }}>
@@ -1282,6 +1267,7 @@ function TextReportBar({ sendReport, role }) {
         type="text" placeholder="Type report..."
         value={text} onChange={e => setText(e.target.value)}
         onKeyDown={e => e.key === 'Enter' && handleSend()}
+        onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
         style={{ ...inputBase, flex: 1 }}
       />
       <button onClick={handleSend} style={{
