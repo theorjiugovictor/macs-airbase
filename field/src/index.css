@@ -62,3 +62,8 @@ input, textarea, select, button {
     padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
 }
+
+/* Ensure focused inputs scroll into view when keyboard opens */
+input:focus, textarea:focus, select:focus {
+  scroll-margin-bottom: 120px;
+}
